@@ -22,9 +22,14 @@ const TOKEN_USAGE_PARSER_VERSION: i64 = 3;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenUsageDay {
+    /// Account-level daily Token total from Codex app-server, or today's local-input fallback.
     pub total_tokens: u64,
+    /// Locally observed input Tokens from Codex session metadata.
     pub input_tokens: u64,
+    /// Cached portion of locally observed input Tokens.
     pub cached_input_tokens: u64,
+    /// Non-cached portion of locally observed input Tokens. Together with the cached portion,
+    /// this always equals `input_tokens`.
     pub non_cached_input_tokens: u64,
     pub session_count: u64,
     pub call_count: u64,

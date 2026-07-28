@@ -29,18 +29,23 @@ plus the 24-week daily usage aggregation. The activity command returns recent
 persisted collector events; the tray does not synthesize either dataset.
 
 The collector reads account-level daily Token totals from Codex app-server's
-`account/usage/read` response. Those official `dailyUsageBuckets` are authoritative
-for the visible Token total and heatmap. While today's official bucket has not
-arrived, today's total temporarily falls back to the locally observed input Token
-count; historical days never use this fallback. A separate local runtime scans only
+`account/usage/read` response and persists them for internal data continuity; the tray
+does not expose them as an additional metric. The visible Token total, heatmap, and
+tooltip use locally observed input Tokens so cached plus non-cached input remains a
+valid breakdown of the displayed total. A separate local runtime scans only
 `token_count.last_token_usage` metadata from Codex session and archived-session
-JSONL files to supplement fields the account API does not expose: input cache split,
-calls, and distinct source sessions. Spawned subagent rollouts can replay their
+JSONL files for input totals, cache split, calls, and distinct source sessions. Spawned
+subagent rollouts can replay their
 parent's history at the beginning of the file; those inherited records are excluded
 until the spawned session's own UUIDv7 turn starts. File size, modification time,
 and the parser version prevent unchanged logs from being rescanned while still
 forcing a rebuild when aggregation semantics change. Prompt and response content is
 never stored by this application.
+
+Each daily activity record keeps account `total_tokens` and locally observed
+`input_tokens` independent. The UI uses only `input_tokens` as Token activity;
+`cached_input_tokens` and `non_cached_input_tokens` split it exactly, so their sum
+equals the displayed Token value.
 
 ## Collection lifecycle
 

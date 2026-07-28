@@ -410,7 +410,7 @@ impl Database {
         let local_history = statement
             .query_map([since], |row| {
                 let input_tokens = row.get::<_, u64>(1)?;
-                let cached_input_tokens = row.get::<_, u64>(2)?;
+                let cached_input_tokens = row.get::<_, u64>(2)?.min(input_tokens);
                 Ok(TokenUsageHistoryDay {
                     day: row.get(0)?,
                     usage: TokenUsageDay {
@@ -990,6 +990,11 @@ mod tests {
         assert_eq!(activity.today.total_tokens, 1_082_620_516);
         assert_eq!(activity.today.input_tokens, 11_945_613_842);
         assert_eq!(activity.today.cached_input_tokens, 11_648_037_760);
+        assert_eq!(activity.today.non_cached_input_tokens, 297_576_082);
+        assert_eq!(
+            activity.today.cached_input_tokens + activity.today.non_cached_input_tokens,
+            activity.today.input_tokens
+        );
         assert_eq!(activity.today.session_count, 1);
         assert_eq!(activity.today.call_count, 95_274);
     }
@@ -1021,6 +1026,33 @@ mod tests {
         assert_eq!(usage.input_tokens, 500);
         assert_eq!(usage.cached_input_tokens, 400);
         assert_eq!(usage.non_cached_input_tokens, 100);
+    }
+
+    #[test]
+    fn cached_input_is_bounded_by_local_input() {
+        let database = Database::open_in_memory().unwrap();
+        database
+            .connection
+            .execute(
+                "INSERT INTO token_usage_sources(source_id, path, file_size, modified_at_ns, scanned_at)
+                 VALUES('source', '/tmp/source', 10, 20, 30)",
+                [],
+            )
+            .unwrap();
+        database
+            .connection
+            .execute(
+                "INSERT INTO token_usage_daily(source_id, day, input_tokens, cached_input_tokens, call_count)
+                 VALUES('source', '2026-07-16', 500, 600, 3)",
+                [],
+            )
+            .unwrap();
+
+        let activity = database.token_activity("2026-07-16", "2026-07-16").unwrap();
+
+        assert_eq!(activity.today.input_tokens, 500);
+        assert_eq!(activity.today.cached_input_tokens, 500);
+        assert_eq!(activity.today.non_cached_input_tokens, 0);
     }
 
     #[test]

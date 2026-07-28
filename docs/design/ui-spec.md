@@ -39,18 +39,17 @@ and used only for Settings. The generated transparent PNG app mark under
   Reset boundaries remain vertical by preserving the observed pre-reset value and
   inserting the observed post-reset value at the same timestamp; the chart never
   invents a 100% post-reset record.
-- Token activity: a third card below the quota trend keeps only today's account Token
-  total, distinct local session count, and local call count visible. A 90-day calendar
-  heatmap encodes the official app-server daily totals with four accent intensities on a
-  square-root scale.
-  Hovering a day shows its total, cached and non-cached input, sessions, and calls in
-  a custom tooltip above every cell. The Token card permits the tooltip to cross its border; the
-  outer tray surface still clips to the native window radius. The heatmap also exposes a text
-  summary.
-- The heatmap shows the latest 90 local calendar days. Official account totals determine
-  its intensity; missing historical account days stay empty, while today temporarily falls back
-  to locally observed input Tokens until its official bucket arrives. The local persisted scan
-  also supplements the tooltip's cache split, session count, and call count.
+- Token activity: a third card below the quota trend keeps only the established five metrics:
+  Token, cached input, non-cached input, local session count, and local call count. The resting
+  card shows today's Token, sessions, and calls; a 90-day calendar heatmap encodes local input
+  Tokens with four accent intensities on a square-root scale.
+  Hovering a day shows Token, cached input, non-cached input, sessions, and calls in a custom
+  tooltip above every cell. Cached plus non-cached input equals Token. The Token card permits
+  the tooltip to cross its border; the outer tray surface still clips to the native window radius.
+  The heatmap also exposes a text summary.
+- The heatmap shows the latest 90 local calendar days. Today's Token, heatmap intensity, and the
+  tooltip Token all use locally observed input Tokens. Account totals remain data-only and are not
+  exposed as an additional UI metric.
 - Visible popover copy, chart labels, tooltips, and accessibility names use Chinese.
 - The native window and its content clip to a 12px continuous corner radius.
 

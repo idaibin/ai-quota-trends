@@ -1,5 +1,21 @@
 # Design QA
 
+## Token activity metric scope
+
+- User feedback: do not add metrics beyond the established Token, cache, non-cache,
+  session, and call fields.
+- The UI now keeps `今日 Token`, heatmap intensity, and tooltip `Token` on local
+  `inputTokens`; cached plus non-cached input equals this Token value.
+- Account totals remain stored data only. They are not presented as an extra card or
+  tooltip metric, and the extra tooltip row and its layout CSS were removed.
+- Native evidence: `screenshots/actual/token-activity-original-metrics-final.png`,
+  captured from the installed Tauri process PID 63199 and popover `CGWindowID` 22839
+  at 338×352. The final card shows only `今日 Token`, sessions, and calls at rest.
+- The bundled frontend contains `Token`, `缓存`, `非缓存`, sessions, and calls,
+  with no `账户 Token`, `本地输入 Token`, or `今日账户 Token` strings.
+
+final result: passed
+
 ## Right-side current value and top-guide clearance
 
 - Selected design: `screenshots/actual/tray-right-value-design.png`.
@@ -1097,5 +1113,15 @@ final result: implementation, installed runtime, and current-day value verified;
 - Real hover evidence remains `Not verified`: the tray window was not present in the CoreGraphics
   on-screen list after restart, and Computer Use could not acquire a window before timing out. No
   browser preview was substituted for native evidence.
+
+final result: implementation and installed runtime verified; hover visual evidence blocked
+
+## Trend tooltip card overflow — 2026-07-28
+
+- User runtime evidence: `/var/folders/33/1n65110j6_15vm1fd1fydb440000gn/T/codex-clipboard-4e683466-92c8-4852-a560-99989b31a837.png` shows the remaining-quota tooltip clipped at the trend card's bottom border.
+- The trend card now overrides the shared card clipping with `overflow: visible` and owns a raised stacking layer, so the tooltip can cross into the gap above the Token card without being covered. The outer tray surface continues to clip to the native window radius.
+- `just check`, `just test`, `just build-gui`, and `git diff --check` pass. The suites include 42 core tests, 3 Tauri tests, and 33 frontend tests.
+- The ad-hoc-signed debug `.app` was installed and restarted from `/Applications`. Its binary matches the built bundle at SHA-256 `6326049ac5d671ed21219298fc9a05233d62ddabecbf64fb4c043be027a4a388`, strict deep signature verification passes, and PID 19135 plus its configured Volta Codex app-server child process are running.
+- Post-fix tooltip hover remains `Not verified`: the tray is a menu-bar-only accessory window, and Computer Use timed out while acquiring both the installed app and `SystemUIServer` status item. No browser preview was substituted for native evidence.
 
 final result: implementation and installed runtime verified; hover visual evidence blocked

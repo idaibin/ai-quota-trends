@@ -29,6 +29,10 @@ fingerprints before the next full rescan, so fixes to inherited subagent-history
 filtering cannot leave stale details behind. No conversation content or Codex
 credential is stored.
 
+The stored account total is not exposed as an additional Token activity metric. The
+tray uses the local input aggregate as Token; `cached` and `non-cached` are its
+complementary portions and always sum to the displayed Token value.
+
 Indexes cover `(limit_id, window_minutes, created_at)` and recent event reads.
 New installs retain 14 days by default. Users can choose 7, 14, 30, or 90 days,
 or keep data long-term. Saving a bounded period immediately deletes expired

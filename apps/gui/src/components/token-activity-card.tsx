@@ -84,7 +84,7 @@ export const tokenTooltipDetails = (cell: TokenHeatmapCell) => {
   const [, month, day] = cell.day.split("-").map(Number);
   return {
     date: `${month}月${day}日`,
-    token: formatTokenCount(cell.totalTokens),
+    token: formatTokenCount(cell.inputTokens),
     cached: formatTokenCount(cell.cachedInputTokens),
     nonCached: formatTokenCount(cell.nonCachedInputTokens),
     sessions: String(cell.sessionCount),
@@ -109,10 +109,10 @@ const buildMonthLabels = (cells: TokenHeatmapCell[]) => {
 export function TokenActivityCard({ activity }: { activity: TokenActivity }) {
   const [hovered, setHovered] = useState<HoveredTokenCell | null>(null);
   const cells = buildTokenHeatmap(activity.history, todayDay());
-  const maximum = Math.max(0, ...cells.map((cell) => cell.totalTokens));
+  const maximum = Math.max(0, ...cells.map((cell) => cell.inputTokens));
   const weekCount = (cells.at(-1)?.weekIndex ?? 0) + 1;
   const labels = buildMonthLabels(cells);
-  const activeDays = cells.filter((cell) => cell.totalTokens > 0);
+  const activeDays = cells.filter((cell) => cell.inputTokens > 0);
   const rangeSummary = activeDays.length
     ? `最近90天有 ${activeDays.length} 天记录 Token 活动，最高单日 ${formatTokenCount(maximum)}。`
     : "最近90天暂无 Token 活动记录。";
@@ -139,7 +139,7 @@ export function TokenActivityCard({ activity }: { activity: TokenActivity }) {
       <dl className="tray-token-metrics">
         <div className="tray-token-metric tray-token-metric--primary">
           <dt>今日 Token</dt>
-          <dd>{formatTokenCount(activity.today.totalTokens)}</dd>
+          <dd>{formatTokenCount(activity.today.inputTokens)}</dd>
         </div>
         <div className="tray-token-metric">
           <dt>会话</dt>
@@ -165,7 +165,7 @@ export function TokenActivityCard({ activity }: { activity: TokenActivity }) {
             <span
               key={cell.day}
               className={`tray-token-heatmap__cell tray-token-heatmap__cell--${tokenHeatLevel(
-                cell.totalTokens,
+                cell.inputTokens,
                 maximum,
               )}${hovered?.cell.day === cell.day ? " tray-token-heatmap__cell--selected" : ""}`}
               style={{ gridColumnStart: cell.weekIndex + 1, gridRowStart: cell.dayOfWeek + 1 }}

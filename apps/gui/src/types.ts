@@ -31,7 +31,9 @@ export interface UsageSpeeds {
 }
 
 export interface TokenUsageDay {
+  /** Account-level daily Token total, or today's local-input fallback when unavailable. */
   totalTokens: number;
+  /** Locally observed input Tokens; cache fields are a split of this value, not totalTokens. */
   inputTokens: number;
   cachedInputTokens: number;
   nonCachedInputTokens: number;

@@ -66,13 +66,13 @@ describe("token activity heatmap", () => {
     expect(formatTokenCount(9_876)).toBe("9,876");
   });
 
-  it("keeps cached and non-cached input in hover details only", () => {
+  it("uses local input Tokens for the original five activity metrics", () => {
     const activity: TokenActivity = {
       today: {
         totalTokens: 511_000_000,
-        inputTokens: 511_000_000,
-        cachedInputTokens: 490_000_000,
-        nonCachedInputTokens: 21_000_000,
+        inputTokens: 1_194_561_384,
+        cachedInputTokens: 1_164_803_776,
+        nonCachedInputTokens: 29_757_608,
         sessionCount: 49,
         callCount: 4_123,
       },
@@ -82,6 +82,7 @@ describe("token activity heatmap", () => {
     const markup = renderToStaticMarkup(createElement(TokenActivityCard, { activity }));
 
     expect(markup).toContain("今日 Token");
+    expect(markup).toContain("11.95亿");
     expect(markup).toContain("会话");
     expect(markup).toContain("调用");
     expect(markup).not.toContain(">Token 活动<");
@@ -89,25 +90,26 @@ describe("token activity heatmap", () => {
     expect(markup).not.toContain("缓存");
     expect(markup).not.toContain("非缓存");
 
-    expect(
-      tokenTooltipDetails({
-        day: "2026-07-22",
-        totalTokens: 511_000_000,
-        inputTokens: 511_000_000,
-        cachedInputTokens: 490_000_000,
-        nonCachedInputTokens: 21_000_000,
-        sessionCount: 49,
-        callCount: 4_123,
-        dayOfWeek: 3,
-        weekIndex: 13,
-      }),
-    ).toEqual({
+    const details = tokenTooltipDetails({
+      day: "2026-07-22",
+      totalTokens: 511_000_000,
+      inputTokens: 1_194_561_384,
+      cachedInputTokens: 1_164_803_776,
+      nonCachedInputTokens: 29_757_608,
+      sessionCount: 49,
+      callCount: 4_123,
+      dayOfWeek: 3,
+      weekIndex: 13,
+    });
+
+    expect(details).toEqual({
       date: "7月22日",
-      token: "5.11亿",
-      cached: "4.90亿",
-      nonCached: "2100万",
+      token: "11.95亿",
+      cached: "11.65亿",
+      nonCached: "2976万",
       sessions: "49",
       calls: "4123",
     });
+    expect(1_164_803_776 + 29_757_608).toBe(1_194_561_384);
   });
 });
