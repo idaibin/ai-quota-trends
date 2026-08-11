@@ -1,7 +1,7 @@
-import { CalendarBlank, Database, Info } from "@phosphor-icons/react";
+import { CalendarBlank, Cpu, Database, Info } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { getDatabaseStats, saveSettings } from "../api/quota-api";
-import type { AppSettings, DatabaseStats } from "../types";
+import { getDatabaseStats, listProviders, saveSettings } from "../api/quota-api";
+import type { AppSettings, DatabaseStats, ProviderProbe } from "../types";
 import { formatBytes } from "../utils/format";
 import { Panel, SelectControl, Toggle } from "../components/ui";
 import { UpdateControl } from "../components/update-control";
@@ -16,6 +16,7 @@ export function SettingsRoute({
   const [draft, setDraft] = useState(settings);
   const [saved, setSaved] = useState(false);
   const [storageStats, setStorageStats] = useState<DatabaseStats | null>(null);
+  const [providers, setProviders] = useState<ProviderProbe[]>([]);
   useEffect(() => setDraft(settings), [settings]);
   useEffect(() => {
     if (!saved) return undefined;
@@ -27,6 +28,17 @@ export function SettingsRoute({
     void getDatabaseStats()
       .then((stats) => {
         if (!cancelled) setStorageStats(stats);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void listProviders()
+      .then((items) => {
+        if (!cancelled) setProviders(items);
       })
       .catch(() => undefined);
     return () => {
@@ -48,24 +60,6 @@ export function SettingsRoute({
   return (
     <div className="settings-page">
       <SettingsSection icon={<CalendarBlank />} title="常规">
-        <SettingRow title="Codex 路径" tooltip="留空时自动查找 Volta 和常用安装位置">
-          <input
-            className="path-control"
-            type="text"
-            aria-label="Codex 可执行文件路径"
-            value={draft.codexPath}
-            placeholder="~/.volta/bin/codex"
-            spellCheck={false}
-            onChange={(event) => setDraft({ ...draft, codexPath: event.target.value })}
-            onBlur={() => {
-              if (draft.codexPath !== settings.codexPath)
-                update("codexPath", draft.codexPath.trim());
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-            }}
-          />
-        </SettingRow>
         <SettingRow title="采集频率">
           <SelectControl
             aria-label="采集频率"
@@ -75,16 +69,6 @@ export function SettingsRoute({
             <option value="900">15 分钟</option>
             <option value="1800">30 分钟</option>
             <option value="3600">60 分钟</option>
-          </SelectControl>
-        </SettingRow>
-        <SettingRow title="浮窗趋势范围">
-          <SelectControl
-            aria-label="浮窗趋势范围"
-            value={draft.trayHistoryHours}
-            onChange={(event) => update("trayHistoryHours", Number(event.target.value))}
-          >
-            <option value="24">最近 24 小时</option>
-            <option value="168">最近 7 天</option>
           </SelectControl>
         </SettingRow>
         <SettingRow title="登录时启动">
@@ -112,6 +96,19 @@ export function SettingsRoute({
             <option value="dark">深色</option>
           </SelectControl>
         </SettingRow>
+      </SettingsSection>
+      <SettingsSection icon={<Cpu />} title="模型与工具">
+        <ProviderCatalog
+          providers={providers}
+          enabledProviderIds={draft.enabledProviderIds}
+          onEnabledChange={(providerId, enabled) => {
+            if (providerId === "codex") return;
+            const next = enabled
+              ? [...draft.enabledProviderIds, providerId]
+              : draft.enabledProviderIds.filter((id) => id !== providerId);
+            update("enabledProviderIds", next);
+          }}
+        />
       </SettingsSection>
       <SettingsSection icon={<Database />} title="数据">
         <SettingRow title="保留时间">
@@ -142,6 +139,79 @@ export function SettingsRoute({
         已保存
       </div>
     </div>
+  );
+}
+
+export function ProviderCatalog({
+  providers,
+  enabledProviderIds,
+  onEnabledChange,
+}: {
+  providers: ProviderProbe[];
+  enabledProviderIds: AppSettings["enabledProviderIds"];
+  onEnabledChange: (providerId: ProviderProbe["id"], enabled: boolean) => void;
+}) {
+  if (providers.length === 0) return <div className="provider-empty">正在检测本机工具…</div>;
+
+  return (
+    <div className="provider-grid">
+      {providers.map((provider) => (
+        <ProviderCard
+          key={provider.id}
+          provider={provider}
+          enabled={enabledProviderIds.includes(provider.id)}
+          onEnabledChange={(enabled) => onEnabledChange(provider.id, enabled)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ProviderCard({
+  provider,
+  enabled,
+  onEnabledChange,
+}: {
+  provider: ProviderProbe;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}) {
+  const available = provider.status === "available";
+  const capability = available
+    ? `已连接 · ${
+        provider.quotaCollectionSupported
+          ? "额度已接入"
+          : provider.id === "zcode"
+            ? "Token 已接入"
+            : "工具已识别"
+      } · ${provider.supportNote}`
+    : provider.status === "error"
+      ? "检测异常 · 无法读取版本信息"
+      : `未安装 · 未找到 ${provider.commandName}`;
+  return (
+    <article className="provider-card">
+      <div className="provider-card__header">
+        <div className="provider-card__identity">
+          <strong>{provider.displayName}</strong>
+          <small>{provider.version ?? provider.commandName}</small>
+        </div>
+        {provider.id === "codex" ? (
+          <span className="provider-card__default">主要来源</span>
+        ) : (
+          <Toggle
+            checked={enabled}
+            onChange={onEnabledChange}
+            label={`${enabled ? "停用" : "启用"}${provider.displayName}`}
+          />
+        )}
+      </div>
+      <div
+        className="provider-card__capability"
+        title={available ? provider.supportNote : undefined}
+      >
+        {capability}
+      </div>
+    </article>
   );
 }
 

@@ -17,12 +17,12 @@ use tracing::{info, warn};
 
 use crate::Database;
 
-const TOKEN_USAGE_PARSER_VERSION: i64 = 3;
+const TOKEN_USAGE_PARSER_VERSION: i64 = 5;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenUsageDay {
-    /// Account-level daily Token total from Codex app-server, or today's local-input fallback.
+    /// Completed-request Token total used by the unified model heatmap.
     pub total_tokens: u64,
     /// Locally observed input Tokens from Codex session metadata.
     pub input_tokens: u64,
@@ -48,7 +48,55 @@ pub struct TokenUsageHistoryDay {
 pub struct TokenActivity {
     pub today: TokenUsageDay,
     pub history: Vec<TokenUsageHistoryDay>,
+    pub models: Vec<ModelTokenActivity>,
     pub last_scanned_at: Option<i64>,
+}
+
+impl TokenActivity {
+    /// Rebuild the visible unified totals from the fixed provider/model rows.
+    ///
+    /// The storage result may contain account-level continuity buckets, but
+    /// those are intentionally discarded from the visible Token activity.
+    pub fn rebuild_from_models_with(
+        &mut self,
+        additional_models: Vec<ModelTokenActivity>,
+        today: &str,
+    ) {
+        self.models.extend(additional_models);
+        let mut totals = BTreeMap::<String, TokenUsageDay>::new();
+        for model in &self.models {
+            for usage in &model.history {
+                let total = totals.entry(usage.day.clone()).or_default();
+                total.total_tokens = total.total_tokens.saturating_add(usage.usage.total_tokens);
+                total.input_tokens = total.input_tokens.saturating_add(usage.usage.input_tokens);
+                total.cached_input_tokens =
+                    total.cached_input_tokens.saturating_add(usage.usage.cached_input_tokens);
+                total.non_cached_input_tokens = total
+                    .non_cached_input_tokens
+                    .saturating_add(usage.usage.non_cached_input_tokens);
+                total.session_count = total.session_count.saturating_add(usage.usage.session_count);
+                total.call_count = total.call_count.saturating_add(usage.usage.call_count);
+            }
+        }
+        self.history =
+            totals.into_iter().map(|(day, usage)| TokenUsageHistoryDay { day, usage }).collect();
+        self.today = self
+            .history
+            .iter()
+            .find(|usage| usage.day == today)
+            .map(|usage| usage.usage)
+            .unwrap_or_default();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelTokenActivity {
+    pub provider_id: String,
+    pub model_id: String,
+    pub display_name: String,
+    pub today: TokenUsageDay,
+    pub history: Vec<TokenUsageHistoryDay>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -72,6 +120,22 @@ pub(crate) struct SourceDailyUsage {
     pub call_count: u64,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct SourceModelDailyUsage {
+    pub day: String,
+    pub model_id: String,
+    pub total_tokens: u64,
+    pub input_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub call_count: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ParsedSourceUsage {
+    daily: Vec<SourceDailyUsage>,
+    models: Vec<SourceModelDailyUsage>,
+}
+
 #[derive(Debug, Deserialize)]
 struct LogRecord {
     timestamp: Option<String>,
@@ -88,6 +152,7 @@ struct TokenPayload {
     id: Option<String>,
     turn_id: Option<String>,
     source: Option<serde_json::Value>,
+    model: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,6 +162,8 @@ struct TokenInfo {
 
 #[derive(Debug, Deserialize)]
 struct LastTokenUsage {
+    #[serde(default)]
+    total_tokens: u64,
     #[serde(default)]
     input_tokens: u64,
     #[serde(default)]
@@ -144,7 +211,7 @@ impl TokenUsageScanner {
                 continue;
             }
 
-            let daily = parse_source(&candidate.path)?;
+            let usage = parse_source(&candidate.path)?;
             database
                 .lock()
                 .map_err(|_| anyhow!("database lock poisoned"))?
@@ -153,7 +220,8 @@ impl TokenUsageScanner {
                     &candidate.path,
                     candidate.fingerprint,
                     scanned_at,
-                    &daily,
+                    &usage.daily,
+                    &usage.models,
                 )?;
             report.scanned_sources += 1;
         }
@@ -275,13 +343,15 @@ fn collect_jsonl_files(root: &Path, output: &mut Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-fn parse_source(path: &Path) -> Result<Vec<SourceDailyUsage>> {
+fn parse_source(path: &Path) -> Result<ParsedSourceUsage> {
     let file = File::open(path)
         .with_context(|| format!("failed to open token source {}", path.display()))?;
     let mut daily = BTreeMap::<String, SourceDailyUsage>::new();
+    let mut models = BTreeMap::<(String, String), SourceModelDailyUsage>::new();
     let mut saw_session_metadata = false;
     let mut subagent_session_id = None::<String>;
     let mut current_session_started = true;
+    let mut current_model = None::<String>;
     for line in BufReader::new(file).lines() {
         let line = line?;
         if !line.contains("\"token_count\"")
@@ -303,6 +373,9 @@ fn parse_source(path: &Path) -> Result<Vec<SourceDailyUsage>> {
             continue;
         }
         if record.record_type.as_deref() == Some("turn_context") {
+            if let Some(model) = payload.model.filter(|model| !model.trim().is_empty()) {
+                current_model = Some(model);
+            }
             if !current_session_started
                 && payload.turn_id.as_deref().is_some_and(|turn_id| {
                     subagent_session_id
@@ -330,13 +403,26 @@ fn parse_source(path: &Path) -> Result<Vec<SourceDailyUsage>> {
         let day = timestamp.with_timezone(&Local).format("%Y-%m-%d").to_string();
         let entry = daily
             .entry(day.clone())
-            .or_insert_with(|| SourceDailyUsage { day, ..Default::default() });
+            .or_insert_with(|| SourceDailyUsage { day: day.clone(), ..Default::default() });
         entry.input_tokens = entry.input_tokens.saturating_add(usage.input_tokens);
         entry.cached_input_tokens =
             entry.cached_input_tokens.saturating_add(usage.cached_input_tokens);
         entry.call_count = entry.call_count.saturating_add(1);
+        let model_id = current_model.clone().unwrap_or_else(|| "unknown".to_owned());
+        let model_entry = models
+            .entry((day.clone(), model_id.clone()))
+            .or_insert_with(|| SourceModelDailyUsage { day, model_id, ..Default::default() });
+        model_entry.total_tokens =
+            model_entry.total_tokens.saturating_add(usage.total_tokens.max(usage.input_tokens));
+        model_entry.input_tokens = model_entry.input_tokens.saturating_add(usage.input_tokens);
+        model_entry.cached_input_tokens =
+            model_entry.cached_input_tokens.saturating_add(usage.cached_input_tokens);
+        model_entry.call_count = model_entry.call_count.saturating_add(1);
     }
-    Ok(daily.into_values().collect())
+    Ok(ParsedSourceUsage {
+        daily: daily.into_values().collect(),
+        models: models.into_values().collect(),
+    })
 }
 
 #[cfg(test)]
@@ -351,6 +437,84 @@ mod tests {
 
     use super::*;
 
+    fn model_activity(
+        provider_id: &str,
+        model_id: &str,
+        day: &str,
+        total_tokens: u64,
+    ) -> ModelTokenActivity {
+        let input_tokens = total_tokens / 2;
+        let cached_input_tokens = input_tokens / 2;
+        let usage = TokenUsageDay {
+            total_tokens,
+            input_tokens,
+            cached_input_tokens,
+            non_cached_input_tokens: input_tokens - cached_input_tokens,
+            session_count: 1,
+            call_count: 2,
+        };
+        ModelTokenActivity {
+            provider_id: provider_id.to_owned(),
+            model_id: model_id.to_owned(),
+            display_name: format!("{provider_id} · {model_id}"),
+            today: usage,
+            history: vec![TokenUsageHistoryDay { day: day.to_owned(), usage }],
+        }
+    }
+
+    #[test]
+    fn rebuild_from_models_with_uses_provider_model_totals_over_official_history() {
+        let day = "2026-07-22";
+        let official = TokenUsageDay {
+            total_tokens: 9_999,
+            input_tokens: 8_000,
+            cached_input_tokens: 7_000,
+            non_cached_input_tokens: 1_000,
+            session_count: 99,
+            call_count: 100,
+        };
+        let mut activity = TokenActivity {
+            today: official,
+            history: vec![TokenUsageHistoryDay { day: day.to_owned(), usage: official }],
+            models: vec![model_activity("codex", "gpt-5.6", day, 120)],
+            last_scanned_at: Some(123),
+        };
+        activity.rebuild_from_models_with(vec![model_activity("zcode", "glm-5.2", day, 80)], day);
+
+        assert_eq!(activity.today.total_tokens, 200);
+        assert_eq!(activity.today.input_tokens, 100);
+        assert_eq!(activity.today.cached_input_tokens, 50);
+        assert_eq!(activity.today.call_count, 4);
+        assert_eq!(activity.history.len(), 1);
+        assert_eq!(activity.history[0].usage, activity.today);
+        let model_total = activity
+            .models
+            .iter()
+            .flat_map(|model| model.history.iter())
+            .filter(|usage| usage.day == day)
+            .map(|usage| usage.usage.total_tokens)
+            .sum::<u64>();
+        assert_eq!(model_total, activity.today.total_tokens);
+    }
+
+    #[test]
+    fn rebuild_from_models_with_rebuilds_existing_models_without_additional_rows() {
+        let day = "2026-07-22";
+        let official = TokenUsageDay { total_tokens: 500, ..Default::default() };
+        let mut activity = TokenActivity {
+            today: official,
+            history: vec![TokenUsageHistoryDay { day: day.to_owned(), usage: official }],
+            models: vec![model_activity("codex", "gpt-5.6", day, 75)],
+            last_scanned_at: None,
+        };
+
+        activity.rebuild_from_models_with(Vec::new(), day);
+
+        assert_eq!(activity.today.total_tokens, 75);
+        assert_eq!(activity.history.len(), 1);
+        assert_eq!(activity.history[0].usage.total_tokens, 75);
+    }
+
     #[test]
     fn aggregates_incremental_token_usage_by_local_day() {
         let temp = tempdir().unwrap();
@@ -362,6 +526,7 @@ mod tests {
         fs::write(
             sessions.join("rollout-one.jsonl"),
             concat!(
+                "{\"timestamp\":\"2026-07-22T07:59:00Z\",\"type\":\"turn_context\",\"payload\":{\"model\":\"gpt-5.6\"}}\n",
                 "{\"timestamp\":\"2026-07-22T08:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"input_tokens\":100,\"cached_input_tokens\":80,\"total_tokens\":110}}}}\n",
                 "{\"timestamp\":\"2026-07-22T08:01:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"input_tokens\":50,\"cached_input_tokens\":20,\"total_tokens\":55}}}}\n",
                 "{\"timestamp\":\"2026-07-22T08:02:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"message\",\"content\":\"token_count\"}}\n",
@@ -392,6 +557,27 @@ mod tests {
                 call_count: 3,
             }
         );
+        assert_eq!(activity.models.len(), 2);
+        assert_eq!(
+            activity
+                .models
+                .iter()
+                .find(|model| model.model_id == "gpt-5.6")
+                .unwrap()
+                .today
+                .input_tokens,
+            150
+        );
+        assert_eq!(
+            activity
+                .models
+                .iter()
+                .find(|model| model.model_id == "unknown")
+                .unwrap()
+                .today
+                .input_tokens,
+            200
+        );
 
         let second = scanner.refresh(&database, 1_753_200_060).unwrap();
         assert_eq!(second.scanned_sources, 0);
@@ -413,11 +599,22 @@ mod tests {
         assert_eq!(updated.today.cached_input_tokens, 155);
         assert_eq!(updated.today.session_count, 2);
         assert_eq!(updated.today.call_count, 4);
+        assert_eq!(
+            updated
+                .models
+                .iter()
+                .find(|model| model.model_id == "gpt-5.6")
+                .unwrap()
+                .today
+                .input_tokens,
+            160
+        );
 
         database.lock().unwrap().reset_local_data().unwrap();
         let reset = database.lock().unwrap().token_activity("2026-07-22", "2026-07-22").unwrap();
         assert_eq!(reset.today, TokenUsageDay::default());
         assert!(reset.history.is_empty());
+        assert!(reset.models.is_empty());
         assert_eq!(reset.last_scanned_at, None);
     }
 

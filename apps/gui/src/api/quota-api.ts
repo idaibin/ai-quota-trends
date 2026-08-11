@@ -13,6 +13,8 @@ import type {
   DashboardData,
   DatabaseCleanupResult,
   DatabaseStats,
+  ProviderQuota,
+  ProviderProbe,
   UpdateCheckResult,
   UpdateInstallResult,
 } from "../types";
@@ -33,6 +35,107 @@ export async function getAlerts(): Promise<AlertRecord[]> {
 
 export async function getSettings(): Promise<AppSettings> {
   return isTauriRuntime() ? invoke<AppSettings>("get_settings") : structuredClone(demoSettings);
+}
+
+export async function listProviders(): Promise<ProviderProbe[]> {
+  if (isTauriRuntime()) return invoke<ProviderProbe[]>("list_providers");
+  return [
+    {
+      id: "codex",
+      displayName: "Codex",
+      commandName: "codex",
+      executablePath: "/Users/demo/.volta/bin/codex",
+      version: "0.80.0",
+      status: "available",
+      quotaCollectionSupported: true,
+      supportNote: "已接入额度与 Token 活动采集",
+    },
+    {
+      id: "zcode",
+      displayName: "ZCode",
+      commandName: "zcode",
+      executablePath: "/Users/demo/.local/bin/zcode",
+      version: "0.16.1",
+      status: "available",
+      quotaCollectionSupported: false,
+      supportNote: "已接入本地模型 Token 明细",
+    },
+    {
+      id: "qoder-cn",
+      displayName: "Qoder 国内版",
+      commandName: "qoder",
+      executablePath: "/Users/demo/.local/bin/qoder",
+      version: "1.1.17",
+      status: "available",
+      quotaCollectionSupported: true,
+      supportNote: "已接入本地额度",
+    },
+    {
+      id: "antigravity",
+      displayName: "Antigravity",
+      commandName: "agy",
+      executablePath: "/Users/demo/.local/bin/agy",
+      version: "1.1.11",
+      status: "available",
+      quotaCollectionSupported: true,
+      supportNote: "已接入本地额度",
+    },
+  ];
+}
+
+export async function listProviderQuotas(): Promise<ProviderQuota[]> {
+  if (isTauriRuntime()) return invoke<ProviderQuota[]>("list_provider_quotas");
+  return [
+    {
+      id: "qoder-cn",
+      displayName: "Qoder 国内版",
+      status: "available",
+      plan: "Pro Trial",
+      expiresAtRaw: "Aug 24, 2026 at 09:56:12 GMT+8",
+      expiresAtEpoch: 1_787_537_772,
+      pools: [
+        {
+          name: "套餐额度",
+          models: [],
+          used: 1,
+          total: 300,
+          remainingPercent: 99.67,
+          refreshAfterSeconds: null,
+          refreshRaw: null,
+        },
+      ],
+      message: null,
+    },
+    {
+      id: "antigravity",
+      displayName: "Antigravity",
+      status: "available",
+      plan: "Antigravity Starter Quota",
+      expiresAtRaw: null,
+      expiresAtEpoch: null,
+      pools: [
+        {
+          name: "Gemini 模型",
+          models: ["Gemini Flash", "Gemini Pro"],
+          used: null,
+          total: null,
+          remainingPercent: 98.36,
+          refreshAfterSeconds: 604_620,
+          refreshRaw: "167h 57m",
+        },
+        {
+          name: "Claude 与 GPT 模型",
+          models: ["Claude Opus", "Claude Sonnet", "GPT-OSS"],
+          used: null,
+          total: null,
+          remainingPercent: 100,
+          refreshAfterSeconds: null,
+          refreshRaw: null,
+        },
+      ],
+      message: null,
+    },
+  ];
 }
 
 export async function saveSettings(settings: AppSettings): Promise<AppSettings> {

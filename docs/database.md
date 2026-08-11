@@ -13,25 +13,42 @@ changes. `limit_id` and `window_minutes` form the semantic window identity;
 events used by Activity and Alerts.
 
 `settings` stores the small user-controlled configuration surface, including the
-persisted 24-hour or seven-day tray trend range. Older settings rows default this
-new preference to 24 hours during deserialization.
+internal persisted tray trend-range field retained for compatibility. The current
+Settings surface does not expose that range; older settings rows still default it
+to 24 hours during deserialization. A legacy non-empty `codexPath` is also
+serialized and retained for the collector, but is not shown or edited by Settings.
 
 `token_usage_sources` fingerprints local Codex session logs so unchanged files can
 be skipped. `token_usage_daily` stores one derived aggregate per source session and
-local calendar day; dashboard queries sum these rows to produce cached and
-non-cached input, distinct session count, and call count. `account_token_usage_daily`
-stores the account-level Token totals returned by Codex app-server
-`account/usage/read`; these values override locally derived totals for matching
-dates. If the current local date has no official bucket yet, only that day's total
-falls back to the locally derived input count. `token_usage_metadata` records the last completed local scan and parser
-version. A parser-version change clears only the derived local rows and source
-fingerprints before the next full rescan, so fixes to inherited subagent-history
-filtering cannot leave stale details behind. No conversation content or Codex
+local calendar day; its input/cache values remain diagnostic fields alongside
+distinct session and call counts. `token_usage_model_daily` stores the
+completed-request `total_tokens` rows used for the visible Token metric and
+heatmap. `account_token_usage_daily` stores the account-level Token totals
+returned by Codex app-server `account/usage/read`; the storage-layer
+`token_activity` result may overlay these official buckets for internal
+continuity, but the dashboard rebuilds visible history and today's total from
+Codex plus additional provider/model rows. If no model row exists, the visible
+total is zero and never an account metric. `token_usage_metadata` records the
+last completed local scan and parser version. A v3/v4-to-v5 parser migration clears model rows and invalidates source
+fingerprints while retaining compatible `token_usage_daily` totals. If a source
+JSONL is unavailable, those retained totals remain visible as `Codex · 未归类`
+until a later scan can rebuild model attribution. No conversation content or Codex
 credential is stored.
 
+`token_usage_model_daily` is a rebuildable derived table keyed by Codex rollout
+source, local day, provider, and model. It preserves the aggregate Token tables
+while allowing the popover heatmap to split a day's completed-request total Tokens by model.
+ZCode model usage is not copied into this database: the app opens
+`~/.zcode/cli/db/db.sqlite` read-only and groups completed `model_usage` rows by
+local day and model. Qoder CN and Antigravity do not contribute model Token rows
+until a stable local usage contract is verified.
+If retained aggregate Codex rows can no longer be attributed because their source
+JSONL is unavailable, the positive daily difference is surfaced as `Codex · 未归类`
+instead of dropping the historical total or inventing a model name.
+
 The stored account total is not exposed as an additional Token activity metric. The
-tray uses the local input aggregate as Token; `cached` and `non-cached` are its
-complementary portions and always sum to the displayed Token value.
+tray uses the unified provider/model completed-request total; `cached` and
+`non-cached` remain a diagnostic split of the input portion.
 
 Indexes cover `(limit_id, window_minutes, created_at)` and recent event reads.
 New installs retain 14 days by default. Users can choose 7, 14, 30, or 90 days,

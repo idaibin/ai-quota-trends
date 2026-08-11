@@ -1,8 +1,14 @@
-# Codex Quota Trends
+# Agent Quota Trends
 
-Codex Quota Trends is a local-first observer for Codex quota pools. Its intended
-value is durable history, cross-cycle comparison, consumption pace, and honest
-exhaustion-risk signals rather than another copy of Codex's current-usage view.
+Agent Quota Trends is a local-first observer for AI coding agents. Codex quota
+and model-level token activity are collected today; ZCode contributes model-level
+token activity from its read-only local SQLite history. The unified heatmap uses
+completed-request total Tokens, while input/cache figures remain diagnostic fields.
+Qoder CN and Antigravity quota is read on demand from their installed CLI usage
+screens through a bounded local PTY. The app does not read their credentials or send
+model prompts, and these observations are not persisted as trend snapshots. Its intended value is durable history, cross-cycle comparison,
+consumption pace, and honest exhaustion-risk signals rather than another copy
+of a provider's current-usage view.
 
 All product data stays on the Mac. Authentication remains owned by the installed
 Codex CLI through `codex app-server`; the app never reads Codex credentials or
@@ -39,7 +45,8 @@ The complete seven-day procedure and stop criteria are in
 ## Development
 
 Requirements: macOS, Codex CLI 0.144.1 or later for the currently verified wire
-shape, Rust 1.94, Node 24, and npm.
+shape, Rust 1.94, Node 24, and npm. `tmux` is optional for Codex-only use and is
+required to read Qoder CN or Antigravity quota screens.
 
 ```bash
 just install

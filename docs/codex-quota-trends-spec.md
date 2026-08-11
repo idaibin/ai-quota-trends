@@ -15,13 +15,13 @@ docs/codex-quota-trends-spec.md
 ```
 
 ````markdown
-# Codex Quota Trends 产品与实施规格
+# Agent Quota Trends 产品与实施规格
 
 ## 1. 项目概述
 
 项目名称：
 
-Codex Quota Trends
+Agent Quota Trends
 
 仓库：
 
@@ -30,7 +30,11 @@ codex-quota-trends
 
 ## 1.1 产品定位
 
-Codex Quota Trends 是一个 macOS 本地优先（Local-first）的 Codex 使用趋势分析工具。
+Agent Quota Trends 是一个 macOS 本地优先（Local-first）的 AI 编程工具用量观察器。当前持续采集 Codex 额度与 Token 活动，只读汇总 ZCode 本地 Token 记录，并通过已安装 CLI 的额度界面读取 Qoder 国内版和 Antigravity 当前额度。
+
+菜单栏标题仍固定使用 Codex 额度。弹出窗一次完整展示所有已启用工具，不提供切换器；Codex 展示持久化额度窗口，Qoder 国内版展示套餐与 Credit，Antigravity 展示两个共享模型池。ZCode 当前只展示已接入 Token 明细，不虚构账户额度。弹出窗不展示 Codex 趋势图。
+
+Token 热力图以本地已完成请求的 total Token 为统一口径，汇总 Codex 与可验证的本地工具记录。每日悬停仅显示日期与 provider subtotal，不重复当天总量，也不展示 model 子行；可见 provider subtotal 与当天总量对账。
 
 核心目标：
 
@@ -648,6 +652,15 @@ Above pace
 
 ## Settings
 
+The Settings UI does not display or edit a Codex executable path. For backward
+compatibility, a non-empty persisted `codexPath` value remains an internal
+collector override; empty values use `PATH` first, then Volta/local and Homebrew
+locations. The provider catalog displays status and version only.
+The General group contains collection frequency, launch-at-login, menu-bar-only,
+and theme controls; the obsolete floating-window trend-range control is not shown.
+Models & Tools is a compact single-column catalog. Codex is the primary read-only
+source and ZCode/Qoder CN/Antigravity keep enable toggles.
+
 配置：
 
 * Poll interval
@@ -918,7 +931,7 @@ release/v1
 
 构建一个：
 
-> 本地优先、低资源占用、macOS 原生体验的 Codex 额度趋势分析工具。
+> 本地优先、低资源占用、macOS 原生体验的 Agent Quota Trends 用量观察器。
 
 核心指标：
 

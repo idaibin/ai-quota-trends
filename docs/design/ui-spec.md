@@ -10,47 +10,54 @@ and used only for Settings. The generated transparent PNG app mark under
 ## Shell
 
 - Menu bar item: a monochrome template version of the existing quota curve with
-  no purple tile, followed by the rounded current remaining percentage. The title
-  refreshes from the latest local quota snapshot without opening the popover.
-- Menu bar popover: 338×352, frameless, translucent, flush with the menu bar, and
-  hidden on blur. A native macOS HUD material, fine light border, and nested
-  translucent panels provide real desktop-backed glass without a decorative pointer.
-- The popover includes a reset summary and the remaining-quota trend, without
-  decorative traffic-light controls. The
-  summary shows a reset icon followed by a minute-precision countdown using total hours and minutes
-  plus an icon-only reset-credit summary with the available count and earliest
-  available-card expiry date from the latest app-server response.
-  If a later response keeps the same positive available count but omits the credit
-  details, the most recent known expiry remains visible. A count change, zero count,
-  or explicit empty credit list clears that fallback instead of showing stale data.
-  The expiry date uses warning emphasis during its final 24 hours.
-- Trend: a stepped line chart on a continuous elapsed-time axis, with no persistent
-  time ticks or baseline. The 24-hour range summarizes 30-minute intervals and the
-  seven-day range summarizes two-hour intervals while retaining the latest real
-  timestamp and value as the endpoint. The adaptive percentage scale uses three
-  evenly spaced rounded tick labels around the observed values, with horizontal
-  guides only at the lower and middle ticks so a near-maximum trend does not overlap
-  a top guide; missing percentage extremes are not rendered. Hovering shows the interval, interval consumption,
-  corrections when present, and actual remaining quota without a full-height guide.
-  The chart retains at most the latest 100 rendered points. The current remaining
-  value is shown without a percent sign in a digit-width-aware narrow rail immediately
-  right of the latest point. The Y-axis tick labels also omit percent signs. Its compact
-  marker uses a 2px accent halo.
-  Reset boundaries remain vertical by preserving the observed pre-reset value and
-  inserting the observed post-reset value at the same timestamp; the chart never
-  invents a 100% post-reset record.
-- Token activity: a third card below the quota trend keeps only the established five metrics:
-  Token, cached input, non-cached input, local session count, and local call count. The resting
-  card shows today's Token, sessions, and calls; a 90-day calendar heatmap encodes local input
-  Tokens with four accent intensities on a square-root scale.
-  Hovering a day shows Token, cached input, non-cached input, sessions, and calls in a custom
-  tooltip above every cell. Cached plus non-cached input equals Token. The Token card permits
-  the tooltip to cross its border; the outer tray surface still clips to the native window radius.
-  The heatmap also exposes a text summary.
-- The heatmap shows the latest 90 local calendar days. Today's Token, heatmap intensity, and the
-  tooltip Token all use locally observed input Tokens. Account totals remain data-only and are not
+  no purple tile, followed by the rounded current Codex remaining percentage. The
+  popover selection never changes the menu bar source.
+- Menu bar popover: 338px wide, frameless, translucent, flush with the menu bar, and
+  hidden on blur. A neutral dark blue-gray native macOS HUD surface uses a transparent
+  dark gradient, fine light border, restrained inner-edge highlight, and micro-shadow;
+  the glass-like treatment belongs to the quota progress tracks, not to a colored window
+  background, and there is no decorative pointer or glare.
+- The popover uses one continuous dark translucent HUD inside 12px content insets, followed by one
+  borderless Token section. A 1px divider appears only when the quota row stack is
+  non-empty and relies on the surrounding 8px stack gap without extra vertical margins;
+  the resulting provider-to-Token spacing remains 17px. Codex renders only when its first snapshot window has a finite used
+  percentage; Qoder CN and Antigravity render only when enabled and their available
+  provider response contains at least one finite remaining percentage. ZCode is a
+  Token-only source and never renders an empty quota row. Empty, disabled, loading,
+  error, and all-N/A providers are omitted rather than replaced by status copy.
+  The native window resizes to the measured stack plus the fixed Token
+  section. The initial 338×500 window is only a safe startup size. The calendar uses
+  20px blocks with 2px gaps; its usual 14-column layout occupies 306px, so all seven
+  rows remain visible without horizontal scrolling.
+  Every quota row has tool/pool name on the left, an optional muted reset duration immediately after the name on the same line, remaining percentage on the right, and a 4px progress track below. Quantifiable finite values use a 4px rounded progress track with a neutral translucent glass track, fine inset top highlight/bottom shadow, and restrained purple translucent vertical-gradient fills; unavailable values are omitted and never use a fabricated fill. Provider status icons and versions are not
+  shown. Provider and pool names use 14px type, supporting quota metadata stays at 10.5px, and all percentages use 14px type (today's Token total uses 22px).
+  Codex shows "Codex" plus a compact countdown such as "4小时18分"; omit "后重置", reset-card count/expiry, and used/remaining prose.
+  Qoder shows "Qoder 国内版", with no invented reset time, percent on the right, track, and one muted line combining actual "used / total · plan" only when present; omit expiry and labels.
+  Antigravity groups finite windows under one model item for each model group: the `Gemini` item and `Claude 与 GPT` item each contain compact `每周` and `5小时` rows when present. Codex, Qoder 国内版, and both Antigravity windows use one purple quota system; the Antigravity weekly and five-hour variants share hue `257deg` and differ only in restrained lightness/saturation plus their existing opacity (`每周` lighter, `5小时` deeper), while the visible `每周` and `5小时` labels remain the primary distinction. Color is never the only encoding. Unknown window names remain as visible rows in their model group. Place the compact refresh duration such as "167小时57分" after the window label on one line, percent on the right, and track. Omit "后刷新" and fallback prose. Do not fabricate missing durations.
+  CLI reads are bounded, never send a
+  model prompt, and quota rows are rendered only from current finite values. Tray
+  quota reads for enabled Qoder CN and Antigravity providers run on initial display, tray focus, and a five-minute fallback; an
+  in-flight refresh keeps the current rows until its response atomically replaces
+  them, while errors clear the stale rows. The popover does not render a quota trend chart.
+- Token activity: the borderless section below quota shows today's Token; the
+  dashboard rebuilds this visible provider/model completed-request total from
+  model rows, so storage-only account buckets are not rendered and no model rows
+  means zero. A continuous 90-local-day `react-activity-calendar` heatmap fills missing days with zero and encodes completed-request total
+  Tokens with one ordered purple sequential scale on a square-root basis: deep purple-gray at zero, then four levels with monotonically increasing purple brightness and saturation without fluorescent highlights. Yellow, green, and blue are not used by this heatmap.
+  Hovering a day shows its date and provider subtotals, without repeating the daily Token total.
+  Provider groups keep the fixed Codex, ZCode, Qoder CN, and Antigravity order, and only providers
+  with a positive value for that day are shown; model identifiers are not displayed. When provider
+  details exist, their subtotals reconcile to the daily total; otherwise the tooltip keeps an
+  explicit no-detail state. The Token section permits
+  the tooltip to cross its section; the portal-rendered tooltip uses explicit tray colors and a bounded
+  width with readable type and line height so it remains readable over the heatmap without an
+  unnecessary scrollbar.
+  The outer tray surface still clips to the native window radius. The heatmap also exposes a text
+  summary plus an offscreen structured list of active-day details that does not require pointer hover.
+- The heatmap shows exactly the latest 90 contiguous local calendar days, including zero-filled days. Today's Token and heatmap
+  intensity use the unified provider/model completed-request total Tokens; the tooltip does not repeat that daily total. Account totals remain data-only and are not
   exposed as an additional UI metric.
-- Visible popover copy, chart labels, tooltips, and accessibility names use Chinese.
+- Visible popover copy, labels, tooltips, and accessibility names use Chinese.
 - The native window and its content clip to a 12px continuous corner radius.
 
 ## Tokens
@@ -71,25 +78,37 @@ Icons use Phosphor's regular outline weight; the app mark is a transparent PNG.
 Window, panel, and control radii are respectively 12px, 10–12px, and 9px across both
 the tray and Settings surfaces.
 
-The tray and Settings share system-aware light and dark materials. System blue is
-reserved for quota data and active controls; red and green remain semantic. The
+The tray and Settings share system-aware light and dark materials. System blue remains
+available to Settings and active controls; tray quota data uses the single purple
+system described above, while red remains semantic. The
 layout follows a compact native-menu rhythm: 8px between tray groups, 12px internal
 content insets, 6px dense text spacing, and 16px between Settings groups.
 
 ## Components
 
-- `TrayPopover`: the primary product surface and owner of reset timing, reset-credit
-  availability, and the remaining-quota trend. It has no branded toolbar, decorative
-  traffic-light strip, or popover pointer.
-- `TrayRemainingChart`: a library-rendered stepped line chart with change points
-  spaced evenly within the persisted 24-hour or seven-day selection, a visible
-  percentage scale, reset markers,
-  and tooltip.
-- `TokenActivityCard`: a React/CSS Grid calendar heatmap backed by Rust/SQLite daily
-  aggregates. React owns the rolling 90-day layout, hover tooltip, and labels; no additional chart
-  library or client-side persistence is introduced.
+- `TrayPopover`: the primary product surface and owner of the finite-source
+  provider rows, quota visibility, dynamic window height, and reset timing. It uses one continuous dark translucent HUD
+  and has no empty/unavailable placeholders, quota trend, branded toolbar,
+  decorative traffic-light strip, or popover pointer.
+- `TokenActivityCard`: a `react-activity-calendar` heatmap backed by Rust/SQLite daily
+  model aggregates plus the read-only local ZCode usage database. React owns the rolling
+  90-day data mapping, provider-summary Chinese tooltip text, and labels; the library owns
+  week layout and tooltip collision handling. No additional chart backend or client-side
+  persistence is introduced.
 - `SettingsRoute`: the only on-demand main-window route.
-  It uses a 520×580 single-column preferences window with no branded top bar.
+  It uses a 520×580 single-column preferences window with a restrained native titlebar.
+  The empty 32px titlebar calls Tauri's explicit start-dragging API on primary-button
+  press; the traffic-light area remains clear and interactive controls remain below it.
+  Codex uses a persisted legacy `codexPath` override when present, then is
+  discovered automatically by the same resolver used by the collector; its
+  connection state and version are read-only status, never an editable setting, and
+  executable paths stay internal rather than appearing in the cards.
+  A Models & Tools group lists the fixed Codex, ZCode, Qoder CN, and Antigravity
+  catalog in one compact column with local version/probe status. Each card uses two
+  non-overlapping rows: name/version plus the primary-source label or enable toggle,
+  followed by one merged connection/capability sentence. Status icons and executable
+  paths are not shown. Codex is labelled as the persistent quota collector, ZCode as a
+  Token source, and Qoder CN/Antigravity as local CLI quota sources.
   Theme selection is a normal row in the General group. Compact Chinese-only
   groups cover general behavior and data storage. Data storage shows only the
   retention period and total disk usage;
@@ -97,10 +116,10 @@ content insets, 6px dense text spacing, and 16px between Settings groups.
   such as reclaimable disk space.
   Software version and update actions appear as the final settings item rather
   than occupying the native titlebar.
-  Collection intervals are limited to practical fallback cadences of 1, 2, 5,
-  and 10 minutes; event-driven quota updates still refresh immediately.
-  The tray trend defaults to 24 hours and can be changed to seven days only from
-  General settings; the preference is persisted in SQLite.
+  Collection intervals are limited to practical fallback cadences of 15, 30,
+  and 60 minutes;
+  event-driven quota updates still refresh immediately. The persisted trend-range
+  field remains an internal compatibility detail and is not exposed in Settings.
   Group headings sit outside softly filled cards. Cards use inset system separators,
   compact 44px rows, 28px controls, and matching icon/caret weights. Auto-save confirmation appears briefly in the
   otherwise unused native titlebar area rather than covering destructive actions.
@@ -111,12 +130,13 @@ content insets, 6px dense text spacing, and 16px between Settings groups.
 
 ## Responsive behavior
 
-- The tray surface uses the fixed 338×352 preset and is not treated as a mobile
-  page. Its reset summary, compressed quota trend, and Token activity card occupy
-  three fixed rows.
+- The tray surface uses a fixed 338px width and a 500px startup preset, then follows
+  the measured visible quota stack plus Token activity section. It is not treated as
+  a mobile page, and no empty quota rows are reserved.
 - Chart labels and plot margins are sized to remain fully visible at that width.
 - The Settings surface is fixed to a compact 520px width. Its native titlebar
-  area is left clear for macOS traffic lights, and all controls flow in one column.
+  area is left clear for macOS traffic lights and supports window dragging, while
+  all controls flow in one scrollable column.
 
 ## Interaction states
 
@@ -144,3 +164,17 @@ Reduced-motion users receive no animated chart/ring entrance.
   hidden on blur, and toggled from the tray icon.
 - On macOS the app uses accessory activation policy so it behaves as a menu bar
   utility rather than a permanent Dock app.
+
+## Token heatmap width amendment — 2026-08-11
+
+- The existing Token contract remains exactly 90 contiguous local calendar days,
+  including today, with missing days represented as zero; no additional day or
+  client-side persistence is introduced.
+- At the fixed 338px tray width and 12px content insets (about 314px usable
+  content), the calendar uses the existing library's 14-week layout with 20px
+  blocks and 2px gaps: `14 × (20 + 2) − 2 = 306px`. Seven rows remain visible;
+  the 152px row band plus the 18px month-label band gives a 170px calendar box.
+  This fits without a horizontal scroll owner, while the tray continues to
+  measure the Token section's natural height.
+- Native macOS compositing and final visual geometry remain `Not verified` until
+  a current tray-window capture is available.

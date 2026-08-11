@@ -2,9 +2,9 @@ use std::{collections::BTreeMap, fs, process::Command};
 
 use chrono::{Duration, Local, Utc};
 use codex_quota_core::{
-    ActivityEvent, AlertRecord, AppSettings, CollectorState, DatabaseCleanupResult, DatabaseStats,
-    Pace, QuotaSnapshot, TokenActivity, TrendPoint, UsageSpeeds, calculate_consumed,
-    calculate_pace, calculate_speeds,
+    ActivityEvent, AlertRecord, AppSettings, CollectorState, Database, DatabaseCleanupResult,
+    DatabaseStats, Pace, ProviderId, ProviderProbe, ProviderQuota, QuotaSnapshot, TokenActivity,
+    TrendPoint, UsageSpeeds, calculate_consumed, calculate_pace, calculate_speeds,
 };
 use serde::Serialize;
 use tauri::{AppHandle, State};
@@ -53,10 +53,27 @@ fn build_usage_heatmap(history: &[TrendPoint], since: i64) -> Vec<UsageHeatmapDa
 }
 
 fn settings_side_effects(previous: &AppSettings, current: &AppSettings) -> (bool, bool) {
-    let reload_collector = previous.codex_path != current.codex_path
-        || previous.poll_interval_seconds != current.poll_interval_seconds;
+    let reload_collector = previous.poll_interval_seconds != current.poll_interval_seconds;
     let update_autolaunch = previous.launch_at_login != current.launch_at_login;
     (reload_collector, update_autolaunch)
+}
+
+fn enabled_quota_probes(
+    probes: &[ProviderProbe],
+    enabled_provider_ids: &[ProviderId],
+) -> Vec<ProviderProbe> {
+    probes
+        .iter()
+        .filter(|probe| {
+            probe.quota_collection_supported && enabled_provider_ids.contains(&probe.id)
+        })
+        .cloned()
+        .collect()
+}
+
+fn provider_probe_inputs(database: &Database) -> Result<(String, Vec<ProviderId>), String> {
+    let settings = database.load_settings().map_err(|error| error.to_string())?;
+    Ok((settings.codex_path.trim().to_owned(), settings.enabled_provider_ids))
 }
 
 fn dashboard(state: &AppState) -> Result<DashboardData, String> {
@@ -119,12 +136,26 @@ fn dashboard(state: &AppState) -> Result<DashboardData, String> {
         .map_err(|_| "collector state lock poisoned".to_owned())?
         .clone();
     let today = Local::now().date_naive();
-    let token_activity = database
+    let enabled_provider_ids =
+        database.load_settings().map_err(|error| error.to_string())?.enabled_provider_ids;
+    let mut token_activity = database
         .token_activity(
             &today.format("%Y-%m-%d").to_string(),
             &(today - Duration::days(89)).format("%Y-%m-%d").to_string(),
         )
         .map_err(|error| error.to_string())?;
+    drop(database);
+    let mut additional_models = Vec::new();
+    if enabled_provider_ids.contains(&codex_quota_core::ProviderId::Zcode)
+        && let Ok(zcode_models) = codex_quota_core::read_zcode_model_activity(
+            &today.format("%Y-%m-%d").to_string(),
+            &(today - Duration::days(89)).format("%Y-%m-%d").to_string(),
+        )
+    {
+        additional_models = zcode_models;
+    }
+    token_activity
+        .rebuild_from_models_with(additional_models, &today.format("%Y-%m-%d").to_string());
     Ok(DashboardData {
         snapshot,
         reset_credits_available,
@@ -142,8 +173,23 @@ fn dashboard(state: &AppState) -> Result<DashboardData, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_usage_heatmap, settings_side_effects};
-    use codex_quota_core::{AppSettings, TrendPoint};
+    use super::{build_usage_heatmap, enabled_quota_probes, settings_side_effects};
+    use codex_quota_core::{
+        AppSettings, Database, ProviderId, ProviderProbe, ProviderProbeStatus, TrendPoint,
+    };
+
+    fn probe(id: ProviderId, quota_collection_supported: bool) -> ProviderProbe {
+        ProviderProbe {
+            id,
+            display_name: "test provider",
+            command_name: "test",
+            executable_path: None,
+            version: None,
+            status: ProviderProbeStatus::Missing,
+            quota_collection_supported,
+            support_note: "test",
+        }
+    }
 
     #[test]
     fn heatmap_aggregates_real_consumption_by_utc_day_and_ignores_resets() {
@@ -166,12 +212,59 @@ mod tests {
     }
 
     #[test]
-    fn codex_path_change_reloads_only_the_collector() {
+    fn poll_interval_change_reloads_only_the_collector() {
         let previous = AppSettings::default();
-        let current =
-            AppSettings { codex_path: "/opt/homebrew/bin/codex".to_owned(), ..previous.clone() };
+        let current = AppSettings { poll_interval_seconds: 1_800, ..previous.clone() };
 
         assert_eq!(settings_side_effects(&previous, &current), (true, false));
+    }
+
+    #[test]
+    fn disabled_provider_probe_is_not_selected_for_quota_reads() {
+        let probes = [probe(ProviderId::QoderCn, true), probe(ProviderId::Antigravity, true)];
+
+        let selected = enabled_quota_probes(&probes, &[ProviderId::QoderCn]);
+
+        assert_eq!(
+            selected.iter().map(|probe| probe.id).collect::<Vec<_>>(),
+            [ProviderId::QoderCn]
+        );
+    }
+
+    #[test]
+    fn unsupported_quota_probe_is_not_selected_for_quota_reads() {
+        let probes = [probe(ProviderId::QoderCn, false), probe(ProviderId::Antigravity, true)];
+
+        let selected =
+            enabled_quota_probes(&probes, &[ProviderId::QoderCn, ProviderId::Antigravity]);
+
+        assert_eq!(
+            selected.iter().map(|probe| probe.id).collect::<Vec<_>>(),
+            [ProviderId::Antigravity]
+        );
+    }
+
+    #[test]
+    fn codex_and_zcode_probes_produce_no_quota_reads() {
+        let probes = [probe(ProviderId::Codex, false), probe(ProviderId::Zcode, false)];
+        let selected = enabled_quota_probes(&probes, &[ProviderId::Codex, ProviderId::Zcode]);
+
+        assert!(codex_quota_core::read_provider_quotas(&selected).is_empty());
+    }
+
+    #[test]
+    fn provider_probe_inputs_keep_the_persisted_codex_override() {
+        let database = Database::open_in_memory().unwrap();
+        let settings = AppSettings {
+            codex_path: "  /tmp/custom-codex  ".to_owned(),
+            ..AppSettings::default()
+        };
+        database.save_settings(&settings).unwrap();
+
+        let (codex_path, enabled_provider_ids) = super::provider_probe_inputs(&database).unwrap();
+
+        assert_eq!(codex_path, "/tmp/custom-codex");
+        assert_eq!(enabled_provider_ids, settings.enabled_provider_ids);
     }
 }
 
@@ -217,6 +310,33 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
 }
 
 #[tauri::command]
+pub fn list_providers(state: State<'_, AppState>) -> Result<Vec<ProviderProbe>, String> {
+    let codex_path = {
+        let database = state.database.lock().map_err(|_| "database lock poisoned".to_owned())?;
+        provider_probe_inputs(&database)?.0
+    };
+    Ok(codex_quota_core::probe_providers_with_codex_path(&codex_path))
+}
+
+#[tauri::command]
+pub async fn list_provider_quotas(
+    state: State<'_, AppState>,
+) -> Result<Vec<ProviderQuota>, String> {
+    let (enabled_provider_ids, codex_path) = {
+        let database = state.database.lock().map_err(|_| "database lock poisoned".to_owned())?;
+        let (codex_path, enabled_provider_ids) = provider_probe_inputs(&database)?;
+        (enabled_provider_ids, codex_path)
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let probes = codex_quota_core::probe_providers_with_codex_path(&codex_path);
+        let probes = enabled_quota_probes(&probes, &enabled_provider_ids);
+        codex_quota_core::read_provider_quotas(&probes)
+    })
+    .await
+    .map_err(|error| format!("provider quota task failed: {error}"))
+}
+
+#[tauri::command]
 pub fn save_settings(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -254,7 +374,7 @@ pub fn export_data(state: State<'_, AppState>) -> Result<Option<String>, String>
     let export_dir = state.data_dir.join("exports");
     fs::create_dir_all(&export_dir).map_err(|error| error.to_string())?;
     let path =
-        export_dir.join(format!("codex-quota-trends-{}.csv", Utc::now().format("%Y%m%d-%H%M%S")));
+        export_dir.join(format!("agent-quota-trends-{}.csv", Utc::now().format("%Y%m%d-%H%M%S")));
     fs::write(&path, csv).map_err(|error| error.to_string())?;
     Ok(Some(path.to_string_lossy().into_owned()))
 }

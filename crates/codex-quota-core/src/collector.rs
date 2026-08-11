@@ -107,7 +107,7 @@ impl CollectorRuntime {
         loop {
             self.update_state(CollectorStatus::Connecting, None, None);
             let codex_path = match self.settings() {
-                Ok(settings) => settings.codex_path,
+                Ok(settings) => settings.codex_path_override().unwrap_or_default().to_owned(),
                 Err(error) => {
                     warn!(%error, "collector failed to load settings");
                     self.record_disconnect(&error.to_string());
@@ -306,5 +306,27 @@ fn quota_event(
         Some(value) if value > 0.0 => ("quota_decreased", "Quota decreased", Some(-value)),
         Some(value) if value < 0.0 => ("quota_increased", "Quota increased", Some(-value)),
         _ => ("schema_changed", "Quota schema changed", None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use super::{CollectorConfig, CollectorRuntime};
+    use crate::{AppSettings, Database};
+
+    #[test]
+    fn collector_reads_the_persisted_legacy_codex_override() {
+        let database = Arc::new(Mutex::new(Database::open_in_memory().unwrap()));
+        let settings: AppSettings = serde_json::from_str(
+            r#"{"codexPath":"/tmp/custom-codex","pollIntervalSeconds":900,"rapidDrainPercent":5,"rapidDrainMinutes":10,"offlineThresholdMinutes":5,"launchAtLogin":false,"launchMenuBarOnly":false,"desktopNotifications":false,"dailySummary":false,"retentionDays":14,"theme":"system"}"#,
+        )
+        .unwrap();
+        database.lock().unwrap().save_settings(&settings).unwrap();
+
+        let runtime = CollectorRuntime::new(database, CollectorConfig::default());
+
+        assert_eq!(runtime.settings().unwrap().codex_path_override(), Some("/tmp/custom-codex"));
     }
 }

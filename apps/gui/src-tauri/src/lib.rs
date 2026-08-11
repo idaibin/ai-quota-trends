@@ -103,7 +103,7 @@ pub fn run() {
                 .icon(Image::new(include_bytes!("../icons/tray-template.rgba"), 128, 128))
                 .icon_as_template(true)
                 .title(&initial_tray_title)
-                .tooltip("Codex Quota Trends")
+                .tooltip("Agent Quota Trends")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
@@ -148,6 +148,8 @@ pub fn run() {
             commands::get_activity,
             commands::get_alerts,
             commands::get_settings,
+            commands::list_providers,
+            commands::list_provider_quotas,
             commands::save_settings,
             commands::export_data,
             commands::open_data_folder,
@@ -161,7 +163,7 @@ pub fn run() {
             update::restart_app,
         ])
         .build(tauri::generate_context!())
-        .expect("failed to build Codex Quota Trends");
+        .expect("failed to build Agent Quota Trends");
 
     app.run(|handle, event| match event {
         RunEvent::WindowEvent { label, event: WindowEvent::CloseRequested { api, .. }, .. }

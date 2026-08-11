@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::providers::{ProviderId, default_enabled_provider_ids};
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuotaSnapshot {
@@ -36,8 +38,11 @@ pub enum ThemeMode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-    #[serde(default)]
+    /// Backward-compatible Codex executable override kept out of the settings UI.
+    #[serde(rename = "codexPath", default)]
     pub codex_path: String,
+    #[serde(default = "default_enabled_provider_ids")]
+    pub enabled_provider_ids: Vec<ProviderId>,
     pub poll_interval_seconds: u64,
     #[serde(default = "default_tray_history_hours")]
     pub tray_history_hours: u64,
@@ -56,6 +61,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             codex_path: String::new(),
+            enabled_provider_ids: default_enabled_provider_ids(),
             poll_interval_seconds: 900,
             tray_history_hours: default_tray_history_hours(),
             rapid_drain_percent: 5.0,
@@ -72,6 +78,11 @@ impl Default for AppSettings {
 }
 
 impl AppSettings {
+    pub(crate) fn codex_path_override(&self) -> Option<&str> {
+        let path = self.codex_path.trim();
+        (!path.is_empty()).then_some(path)
+    }
+
     pub fn normalize_legacy_retention(mut self) -> Self {
         if !matches!(self.retention_days, 0 | 7 | 14 | 30 | 90) {
             self.retention_days = 0;
@@ -87,6 +98,14 @@ impl AppSettings {
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
+        if !self.enabled_provider_ids.contains(&ProviderId::Codex) {
+            return Err("Codex must remain enabled as the menu bar quota source");
+        }
+        for (index, provider_id) in self.enabled_provider_ids.iter().enumerate() {
+            if self.enabled_provider_ids[..index].contains(provider_id) {
+                return Err("enabled providers must be unique");
+            }
+        }
         if !(15..=3_600).contains(&self.poll_interval_seconds) {
             return Err("poll interval must be between 15 and 3600 seconds");
         }
@@ -116,12 +135,13 @@ const fn default_tray_history_hours() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::AppSettings;
+    use crate::providers::ProviderId;
 
     #[test]
     fn default_settings_are_valid() {
         let settings = AppSettings::default();
         assert_eq!(settings.poll_interval_seconds, 900);
-        assert!(settings.codex_path.is_empty());
+        assert!(settings.enabled_provider_ids.contains(&ProviderId::Codex));
         assert_eq!(settings.retention_days, 14);
         assert_eq!(settings.tray_history_hours, 24);
         assert!(!settings.desktop_notifications);
@@ -129,13 +149,17 @@ mod tests {
     }
 
     #[test]
-    fn legacy_settings_default_to_twenty_four_hour_tray_history() {
+    fn legacy_settings_keep_codex_path_for_internal_resolution() {
         let settings: AppSettings = serde_json::from_str(
-            r#"{"pollIntervalSeconds":60,"rapidDrainPercent":5,"rapidDrainMinutes":10,"offlineThresholdMinutes":5,"launchAtLogin":false,"launchMenuBarOnly":false,"desktopNotifications":false,"dailySummary":false,"retentionDays":14,"theme":"system"}"#,
+            r#"{"codexPath":"~/.volta/bin/codex","pollIntervalSeconds":60,"rapidDrainPercent":5,"rapidDrainMinutes":10,"offlineThresholdMinutes":5,"launchAtLogin":false,"launchMenuBarOnly":false,"desktopNotifications":false,"dailySummary":false,"retentionDays":14,"theme":"system"}"#,
         )
         .unwrap();
-        assert!(settings.codex_path.is_empty());
+        assert_eq!(settings.codex_path, "~/.volta/bin/codex");
+        assert_eq!(settings.codex_path_override(), Some("~/.volta/bin/codex"));
+        assert_eq!(settings.enabled_provider_ids.len(), 4);
         assert_eq!(settings.tray_history_hours, 24);
+        let serialized = serde_json::to_string(&settings).unwrap();
+        assert!(serialized.contains(r#""codexPath":"~/.volta/bin/codex""#));
     }
 
     #[test]

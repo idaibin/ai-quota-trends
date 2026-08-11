@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Codex Quota Trends",
+  "productName": "Agent Quota Trends",
   "version": "0.1.0",
   "identifier": "dev.idaibin.codex-quota-trends",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Codex Quota Trends",
+        "title": "Agent Quota Trends",
         "width": 520,
         "height": 580,
         "minWidth": 520,
@@ -26,10 +26,10 @@
       },
       {
         "label": "tray",
-        "title": "Codex Quota Trends",
+        "title": "Agent Quota Trends",
         "url": "/?surface=tray",
         "width": 338,
-        "height": 352,
+        "height": 500,
         "visible": false,
         "decorations": false,
         "transparent": true,
@@ -54,8 +54,8 @@
     "createUpdaterArtifacts": true,
     "icon": ["icons/icon.png"],
     "category": "Productivity",
-    "shortDescription": "Local Codex quota trends",
-    "longDescription": "A local-first macOS menu bar app for Codex quota history, trends, and alerts.",
+    "shortDescription": "Local AI agent quota trends",
+    "longDescription": "A local-first macOS menu bar app for AI coding agent availability, quota history, trends, and alerts.",
     "copyright": "Copyright 2026 Daibin"
   },
   "plugins": {

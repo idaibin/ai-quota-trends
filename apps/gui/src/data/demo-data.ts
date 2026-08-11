@@ -98,6 +98,7 @@ export const demoDashboard: DashboardData = {
       callCount: 3_100,
     },
     history: demoTokenHistory,
+    models: [],
     lastScannedAt: now - 30,
   },
 };
@@ -194,7 +195,7 @@ export const demoAlerts: AlertRecord[] = [
 ];
 
 export const demoSettings: AppSettings = {
-  codexPath: "",
+  enabledProviderIds: ["codex", "zcode", "qoder-cn", "antigravity"],
   pollIntervalSeconds: 900,
   trayHistoryHours: 24,
   rapidDrainPercent: 5,

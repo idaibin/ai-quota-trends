@@ -1,5 +1,45 @@
 # Design QA
 
+## Tray OpenUsage-v2 provider cards — 2026-08-10
+
+- Selected design source: `.codex/artifacts/tray-openusage-v2/design.svg` and
+  `.codex/artifacts/tray-openusage-v2/design.png`, fixed at 338×500.
+- The tray now renders four fixed, subtle provider cards in Codex, ZCode, Qoder CN,
+  and Antigravity order. Codex, Qoder, and Antigravity percentages remain the
+  primary values; ZCode is explicitly text-only unavailable while its local Token
+  integration remains visible. Qoder unavailable pools share the plan/expiry row,
+  and Antigravity pools remain nested with a single internal separator. Populated card
+  heights are 64/48/82/112px with 6px gaps. Qoder CN and Antigravity collapse to
+  48px when quota data is unavailable, removing empty pool space.
+- The Token heading aligns `今日 Token` left and its total right, keeps the 90-day
+  `react-activity-calendar`, and exposes the `最近 90 天` range label.
+- The calendar tooltip is rendered through a Floating UI portal, so its background,
+  border, arrow, and text colors are explicit rather than inherited tray variables;
+  its width and type scale are bounded to reduce heatmap obstruction. Long model IDs
+  wrap inside the tooltip, and active-day details are duplicated in an offscreen
+  structured list for keyboard and screen-reader access.
+- Pass 1 native capture: `/private/tmp/agent-quota-tray-openusage-pass1.png`, installed
+  app PID 59120, tray `CGWindowID 39858`, 338×500 points / 676×1000 pixels. It exposed
+  oversized empty unavailable cards and a clipped calendar bottom row. The follow-up
+  uses a flexible Token section plus 10px blocks and 2px gaps. Final native capture and
+  tooltip hover remain pending.
+- Final source review reclaimed the calendar's 14px top margin, giving the dependency's
+  100px SVG enough room in the maximum populated state. It also changed provider-state
+  priority to disabled → loading → finite quota → unavailable, treats all-N/A pools as
+  compact unavailable, compacts disabled providers even when stale finite quota data is
+  still present, and adds focused state-matrix coverage.
+- The follow-up debug bundle was ad-hoc signed, installed at
+  `/Applications/Agent Quota Trends.app`, and passes strict deep signature verification.
+  Its final executable SHA-256 is `508b396d81d42df14253ee0fabd4ea30eef134569cb3401cd6137b8d4b1e34a2`;
+  PID 69937 is running. The hidden tray
+  window remains 338×500 at `CGWindowID 39887`, but post-restart window capture returned
+  only the native HUD backing layer and later reported the hidden window unavailable.
+  Accessibility `AXPress` and a bounded physical status-item click did not reopen a
+  capturable webview. Therefore final composited geometry and tooltip hover remain
+  `Not verified`; browser evidence was not substituted.
+
+final result: implementation installed; final native visual evidence Not verified
+
 ## Token activity metric scope
 
 - User feedback: do not add metrics beyond the established Token, cache, non-cache,
@@ -15,6 +55,108 @@
   with no `账户 Token`, `本地输入 Token`, or `今日账户 Token` strings.
 
 final result: passed
+
+## Dynamic finite-quota tray preparation — 2026-08-10
+
+- Scope: omit provider cards without a current finite quota source; keep ZCode in
+  Token activity only; allow Codex reset metadata to wrap to two lines; resize the
+  native tray from measured provider-stack and Token-section geometry.
+- Source changes: finite Codex/Qoder/Antigravity visibility predicates, natural
+  provider-card heights, conditional divider, rAF-based `setSize`, and the
+  `core:window:allow-set-size` capability. Provider quota reads now refresh on
+  initial tray display, tray focus, and a five-minute bounded fallback; pending
+  refreshes retain the current cards and errors replace them with an empty result.
+- Focused source evidence: 41 frontend tests pass, including NaN/empty/disabled/
+  loading/error/all-N/A/0%-quota visibility, no-card Token-only rendering, and the
+  dynamic-height formula. Native visual capture after this preparation is Not
+  verified; no provider CLI was run in this work package.
+
+- Final validation passes `just check`, `just test`, `just build-gui`, and
+  `git diff --check`; the frontend suite now contains 41 passing tests. The final
+  ad-hoc-signed app is installed at `/Applications/Agent Quota Trends.app`, passes
+  strict deep signature verification, and runs as PID 82332 with executable SHA-256
+  `8914a91daa9e38bc306015e13ed3f6d5b84636e100ea8caa385889eeb65fbd53`.
+- Native visual evidence remains `Not verified`: the active console session was locked
+  during final capture, so `screencapture` returned a black frame and the hidden tray
+  window retained its 338×500 startup bounds. No browser preview was substituted for
+  a real unlocked Tauri window.
+
+final result: implemented, tested, built, signed, and installed; native visual evidence Not verified
+
+## Readable tray typography — 2026-08-10
+
+- Selected source/pass 1: user-provided 338×500 tray screenshot
+  `/var/folders/33/1n65110j6_15vm1fd1fydb440000gn/T/codex-clipboard-ef519720-8b78-422b-8dd3-1fe84cf62a1f.png`.
+  Provider versions, reset/plan metadata, pool refresh text, the Today label, and month labels used
+  an 8–9px scale and were visibly too small at the native backing scale.
+- Final native evidence: `/private/tmp/agent-quota-tray-typography-pass1.png`, CGWindowID 39419,
+  338×500 CSS pixels at PID 36798. Provider names render at 13px, versions and supporting metadata
+  at 10–10.5px, pool percentages at 14px, the primary percentage at 21px, today's Token total at
+  22px, and calendar labels at 10px.
+- All four providers, both Qoder pools, both Antigravity model pools, the quota/Token divider,
+  today's Token total, month labels, and the complete heatmap remain visible without switching,
+  scrolling, overlap, or clipping. Spacing was reduced only between related provider/pool rows;
+  the 338×500 native window size and heatmap block size did not change.
+- The installed app is ad-hoc signed, passes strict deep signature verification, and runs with
+  its configured Codex app-server child. Native tooltip hover remains `Not verified`.
+
+final result: passed
+
+## Empty aligned Settings titlebar — 2026-08-10
+
+- Selected source/pass 1: user-provided screenshot
+  `/var/folders/33/1n65110j6_15vm1fd1fydb440000gn/T/codex-clipboard-e6ad1133-f446-4a26-94fd-ee78abf86dc2.png`.
+  The visible `设置` label and 42px titlebar left approximately 9px above the native traffic
+  lights but approximately 17px below them, so this pass failed the requested vertical rhythm.
+- Final native evidence: `/private/tmp/agent-quota-settings-titlebar-final.png`, CGWindowID 39272,
+  520×580 CSS pixels at PID 20511. The visible title text is absent. The empty 32px drag region
+  leaves approximately 9px above and 8.5px below the 14px native traffic lights at the 2× backing
+  scale, while the content starts immediately below the titlebar divider without overlap.
+- The installed app is ad-hoc signed, passes strict deep signature verification, and runs with
+  its configured Codex app-server child. The explicit `startDragging()` handler remains in the
+  installed build; a synthetic drag gesture was not performed, so gesture runtime evidence remains
+  `Not verified`.
+
+final result: passed
+
+## Agy-guided tray usage stack — 2026-08-10
+
+- Selected source: user-provided 338×500 tray screenshot
+  `/var/folders/33/1n65110j6_15vm1fd1fydb440000gn/T/codex-clipboard-bd5af188-9224-4b2b-ba04-ef137d2681b9.png`.
+  The accepted direction combines Agy's continuous usage-stack review with the existing local
+  provider contracts and activity calendar.
+- Pass 1 native evidence: `/private/tmp/agent-quota-tray-redesign-pass1.png`, CGWindowID 39183.
+  The new hierarchy and progress tracks were visible, but the fixed 280px quota row clipped the
+  Antigravity child pools. This pass failed and was not retained.
+- Final native evidence: `/private/tmp/agent-quota-tray-redesign-final.png`, CGWindowID 39212,
+  338×500 CSS pixels at PID 13298. All four providers, both Qoder pools, both Antigravity model
+  pools, the quota/Token divider, today's Token total, month labels, and the 90-day heatmap are
+  visible without scrolling or switching.
+- The final pass removes provider status icons, green version emphasis, nested card borders,
+  provider-to-provider divider lines, the redundant local-quota label, and empty progress tracks
+  for unavailable add-on pools. Versions are muted metadata; percentages align right; the only
+  section divider separates quota from Token activity.
+- The installed app is ad-hoc signed, passes strict deep signature verification, and runs with
+  its configured Codex app-server child. Native tooltip hover remains `Not verified`; provider
+  then model tooltip content and calendar integration remain covered by frontend tests.
+
+final result: passed
+
+## Tray usage stack redesign — 2026-08-10 (预备说明)
+
+- Scope is limited to the 338×500 tray popover: a borderless continuous quota
+  stack, one subtle divider, and a borderless Token activity section. The outer
+  native 12px window clip/border, fixed four-provider order, local quota data
+  contracts, and `react-activity-calendar` tooltip behavior remain in place.
+- The implementation removes provider status icons and independent card
+  semantics. Codex reset metadata is one Chinese secondary line; ZCode remains
+  explicitly unavailable; Qoder and Antigravity pools use right-aligned
+  percentages, separate secondary metadata, and 4px tracks only when measurable.
+- Static acceptance is covered by the focused tray and Token component tests.
+  Native window capture, computed geometry, and light/dark screenshot comparison
+  are intentionally left `Not verified` for this code-only package.
+
+final result: implementation preflight recorded; native visual evidence Not verified
 
 ## Right-side current value and top-guide clearance
 
@@ -1125,3 +1267,380 @@ final result: implementation and installed runtime verified; hover visual eviden
 - Post-fix tooltip hover remains `Not verified`: the tray is a menu-bar-only accessory window, and Computer Use timed out while acquiring both the installed app and `SystemUIServer` status item. No browser preview was substituted for native evidence.
 
 final result: implementation and installed runtime verified; hover visual evidence blocked
+
+## Agent tool catalog and draggable Settings titlebar — 2026-08-10
+
+- The product display name is now Agent Quota Trends. The existing bundle identifier,
+  app-data directory, SQLite database, repository name, and updater endpoint remain unchanged.
+- The blank 42px Settings titlebar band is now an explicit Tauri drag region. The
+  preferences content remains below the native traffic lights.
+- Settings now lists a fixed catalog for Codex, ZCode, Qoder CN, and Antigravity with
+  local executable/version probe results. Only Codex is labelled as quota-enabled;
+  the other three explicitly report that their account quota interfaces are unverified.
+- `just check`, `just test`, `just build-gui`, and `git diff --check` pass. The debug
+  `/Applications/Agent Quota Trends.app` is ad-hoc signed, passes strict deep signature
+  verification, and is running under the unchanged bundle identifier.
+- Native visual and drag-gesture evidence remains `Not verified`: the accessory app's
+  hidden main window could not be acquired by the local UI-control service, and no browser
+  screenshot was substituted for native evidence.
+
+final result: implementation, build, install, and process verification passed; native visual gesture verification blocked
+
+## Multi-tool quota selector and model Token heatmap — 2026-08-10
+
+- The menu-bar title remains scoped to the latest Codex quota snapshot. The tray popup no longer
+  renders the Codex trend chart; it now switches among the enabled Codex, ZCode, Qoder CN, and
+  Antigravity entries and shows each entry's supported quota state.
+- Codex continues to show its real remaining quota, reset countdown, and reset-card state. The
+  other tools explicitly show that account quota is unavailable instead of inventing a value.
+- The heatmap uses locally observed completed-request total Tokens as one consistent metric. Codex model names come
+  from rollout turn context, and ZCode model usage is read from its local SQLite database in
+  read-only mode. Hover details list each model's contribution to the selected day's total.
+- Existing settings without `enabledProviderIds` load all four fixed entries through the serde
+  default. Codex remains enabled and is the popup's initial selection.
+- Retained Codex daily totals that cannot be reconstructed by model remain visible as
+  `Codex · 未归类`; the migration does not fabricate a model assignment.
+- `just check`, `just test`, `just build-gui`, and `git diff --check` pass. The suites include 46
+  core tests, 3 Tauri tests, and 30 frontend tests. The installed ad-hoc-signed debug app passes
+  strict deep signature verification and is running with its configured Codex app-server child.
+- The existing runtime database migrated to schema version 5 and rebuilt 109 Codex
+  source/model/day rows without deleting its 3,884 retained aggregate daily rows. For 2026-08-10,
+  the grouped Codex model totals were 12,109,334 (`gpt-5.6-luna`), 3,529,120
+  (`gpt-5.6-terra`), and 462,026 (`gpt-5.6-sol`) at verification time.
+- The local ZCode database reported 133,086,924 total Tokens (132,732,341 input Tokens)
+  across 933 completed `glm-5.2` requests for 2026-08-10 when verified.
+- Native selector and hover visuals remain `Not verified`: the macOS console session was locked
+  during final verification, so the menu-bar accessory could not be safely targeted. No browser
+  preview is substituted for native evidence.
+
+final result: implementation, data migration, build, install, and process verification passed; native selector and hover visuals blocked
+
+## Settings automatic Codex discovery and compact provider cards — 2026-08-10
+
+- Source/test evidence: Settings no longer renders an editable Codex path or the
+  obsolete floating-window trend-range control. Models & Tools uses a compact two-column
+  card grid and displays each probe's resolved executable/version as read-only status.
+- The collector, app-server client, provider probes, and Tauri commands now share the
+  same automatic Codex resolver (`PATH` first, then Volta/local and Homebrew locations).
+  Legacy JSON containing `codexPath` still loads and serializes without that unknown field.
+- `core:window:allow-start-dragging` is granted and the visible Settings titlebar calls
+  `getCurrentWindow().startDragging()` only for primary-button presses; browser mode is a no-op.
+- `just check`, `just test`, `just build-gui`, and `git diff --check` pass. The suites include
+  49 core tests, 3 Tauri tests, and 34 frontend tests. The installed ad-hoc-signed app passes
+  strict deep signature verification, and its live child process uses the automatically resolved
+  `/Users/daibin/.volta/bin/codex app-server --listen stdio://` command.
+- Native runtime evidence is `/private/tmp/agent-quota-trends-settings-redesign.png` for the
+  520×580 Settings window. A primary-button drag on the empty titlebar area moved the same native
+  window ID 37732 from `{700, 265}` to `{760, 305}`; its original position was restored afterward.
+
+final result: automatic CLI discovery, compact Settings UI, build/install, and native titlebar drag verified
+
+## Complete provider quota overview — 2026-08-10
+
+- The provider selector is removed. The fixed 338×408 tray now shows every enabled tool in one
+  compact overview card, followed by the unchanged Token heatmap.
+- Codex keeps its real remaining quota, reset countdown, and reset-card summary. ZCode, Qoder CN,
+  and Antigravity each remain visible with executable/version state and an explicit unavailable
+  quota label.
+- The tray preset was increased from 338×352 to 338×408 so four readable provider rows and the
+  existing heatmap fit without scrolling. Missing probe results fall back to the fixed catalog;
+  only tools explicitly disabled in Settings are omitted.
+- `just check`, `just test`, `just build-gui`, and `git diff --check` pass. The suites include 46
+  core tests, 3 Tauri tests, and 32 frontend tests. The installed debug app is ad-hoc signed,
+  passes strict deep signature verification, and runs with its configured Codex app-server child.
+- Native visual evidence remains `Not verified`: the macOS session was unlocked, but Computer Use
+  timed out when acquiring both the installed app and `SystemUIServer`. No coordinate click or
+  browser preview was substituted for the unavailable semantic window path.
+
+final result: implementation, tests, build, install, signature, and process verification passed; native visual evidence blocked
+
+## Provider-first model tooltip — 2026-08-10
+
+- Heatmap hover details now group rows by parent tool before listing child models. Provider groups
+  keep the stable Codex, ZCode, Qoder CN, Antigravity order; models sort by Token within each group.
+- Each provider heading displays its model subtotal. Child rows use the model ID only, avoiding the
+  previous repeated `Codex ·` / `ZCode ·` prefix and preventing cross-provider interleaving.
+- `just check`, `just test`, `just build-gui`, and `git diff --check` pass. The suites include 46
+  core tests, 3 Tauri tests, and 32 frontend tests. The installed app binary matches the signed
+  build at SHA-256 `460b1a1c3295ebbda211fcccf3c94401fd7774bff510171eb63424d4b4d436e1`;
+  the application and its configured Codex app-server child are running.
+- Native hover capture remains `Not verified`: no stable semantic path to the transient menu-bar
+  window was available during final verification, and no browser preview was substituted.
+
+final result: grouping implementation, tests, build, install, signature, and process verification passed; native hover visual evidence blocked
+
+## Local Qoder and Antigravity quota screens — 2026-08-10
+
+- Qoder CN quota is read from its local `/usage` TUI in an isolated, bounded tmux session. The
+  installed app displayed Pro Trial, 2 / 300 plan credits, 99.3% remaining, and the August 24
+  expiry during final verification. The `N/A` add-on pool remains visible as unavailable.
+- Antigravity quota is read from its local `/quota` TUI with the same isolation. The installed
+  app displayed the current Gemini pool at 98.4% and Claude/GPT pool at 0%, including both refresh
+  countdowns. These values are parsed from the provider screens and are not fabricated snapshots.
+- ZCode remains a read-only local model-Token integration; its CLI does not expose an equivalent
+  account-quota screen. Codex remains the menu-bar title and primary quota source.
+- The final tray preset is 338×500. All four provider sections, both Antigravity quota pools, the
+  complete Token heatmap, and month labels are visible without switching or scrolling.
+- `just check`, `just test`, `just build-gui`, and `git diff --check` pass on the final source. The
+  suites include 50 core tests, 3 Tauri tests, and 33 frontend tests. The installed ad-hoc-signed
+  app passes strict deep signature verification and matches the built executable at SHA-256
+  `43ae3ac96133e2c41b7196ccf1c0185bbefdf74c8fd06759d070d3ed450b4ee3`.
+- Native window evidence is `/private/tmp/agent-quota-trends-final-complete-window-2.png` at
+  676×1000 backing pixels for the 338×500 tray. Native hover capture remains `Not verified`;
+  provider-first tooltip grouping is covered by frontend tests.
+
+final result: local provider quotas, complete all-provider layout, tests, build, install, signature, and native window verification passed; native hover visual evidence remains Not verified
+
+## React activity calendar implementation — 2026-08-10
+
+- The tray now keeps the fixed Codex, ZCode, Qoder CN, and Antigravity catalog visible even when
+  a non-Codex source is disabled in Settings; disabled sources remain explicit rather than
+  disappearing from the overview.
+- The hand-written CSS Grid heatmap was replaced by the MIT `react-activity-calendar@3.2.1`
+  component. The existing 90 local calendar days, square-root four-level intensity, Chinese
+  month labels, today's total Token, and provider-first/model-second details remain unchanged.
+- Tooltip text is plain Chinese text with provider subtotals and indented model rows. The library's
+  Floating UI tooltip owns placement, flip, shift, and viewport collision handling; no private
+  provider API, credential file, REST backend, or plugin system was added.
+- Focused frontend checks cover the 90-day mapping, intensity scale, fixed four-tool overview,
+  disabled-source visibility, and provider/model tooltip formatting.
+- `just check`, `just test`, `just build-gui`, and `git diff --check` pass. The suites include
+  49 core tests, 3 Tauri tests, and 34 frontend tests. The installed ad-hoc-signed application
+  matches the built executable and runs with `/Users/daibin/.volta/bin/codex app-server`.
+- Native window evidence is `/private/tmp/agent-quota-trends-activity-calendar.png` at 676×1000
+  backing pixels for the 338×500 tray window ID 38011. It verifies the four-source overview,
+  explicit ZCode quota-unavailable copy, Qoder/Antigravity quota details, and the library-rendered
+  90-day calendar. Native hover capture remains `Not verified`; Floating UI behavior and the
+  provider/model tooltip text are covered by frontend tests.
+
+final result: fixed provider overview, mature activity calendar, local build/install, and native window verified; native hover capture remains Not verified
+
+## Settings text alignment — 2026-08-10
+
+- Selected source: user-provided 520×580 Settings window screenshot
+  `/var/folders/33/1n65110j6_15vm1fd1fydb440000gn/T/codex-clipboard-bc140be0-a4e4-448d-8158-b506998d17a3.png`.
+  Scope is limited to the Settings titlebar and Models & Tools catalog.
+- Pass 1 native evidence: `/private/tmp/agent-quota-settings-aligned.png`, CGWindowID 38325.
+  The single-column catalog still packed identity, capability, and executable path into three
+  horizontal columns. Long Chinese descriptions overlapped the path column, so this pass failed.
+- Final native evidence: `/private/tmp/agent-quota-settings-text-only.png`, CGWindowID 38450,
+  520×580 CSS window at PID 88014. The titlebar contains only the text `设置`; each provider card
+  uses one identity/action row and one capability text row. Provider status icons and executable
+  paths are absent. All visible rows share the same left edge and no text overlaps.
+- Runtime boundary: the explicit primary-button `startDragging()` handler and the full 42px
+  titlebar drag surface remain in the installed build. A synthetic native drag was not performed
+  in this pass, so drag-gesture runtime evidence remains Not verified.
+- Validation: `just check`, `just test`, `just build-gui`, and `git diff --check` passed with
+  49 core tests, 3 Tauri tests, and 35 frontend tests. The installed app passes strict ad-hoc
+  codesign verification and owns a live Codex app-server child process.
+
+final result: passed
+# 2026-08-11 — Minimal quota HUD native verification
+
+- Visual source: `/Users/daibin/.codex/generated_images/019fefbd-1502-7d30-b64f-109e681317ed/exec-a4cade7f-296b-4f93-b31f-ee2fb5a667aa-final.png` (`a75ee7ed3934dfe4bedbc5cf4b6359f81b9c28630aea4bfa60fd8155eee929de`).
+- Installed runtime: `/Applications/Agent Quota Trends.app`, ad-hoc signed and verified after the debug bundle was copied into place. The previous installed app is retained at `/private/tmp/Agent Quota Trends.app.backup-20260811-1634`.
+- Native window evidence: process `codex-quota-trends`, PID `48692`, CGWindowID `44028`, logical bounds `338×549` at `(1238, 30)`. The adaptive height reflects six real finite quota rows instead of the four-row visual fixture.
+- Captures:
+  - `.codex/artifacts/native-qa-20260811/agent-quota-tray.png` (`676×1098`, SHA-256 `a1d02a802656ff4bdae7d83c070542a6f6d21dd8eacf139915a26394d210e498`)
+  - `.codex/artifacts/native-qa-20260811/reference-vs-native.png` (`1352×1098`, SHA-256 `dbf750e5d4bd85c8b53a434b034b49d98738625872bc7c1d50185ccf815e6fdc`)
+- Visible result: continuous dark HUD; no product title, settings, status icons, provider versions, unavailable placeholders, or separate Antigravity header. Codex reset duration is inline. Qoder uses one compact metadata line. Antigravity preserves and distinguishes Gemini/Claude-GPT weekly and five-hour windows. All progress tracks and all seven heatmap rows are visible without clipping.
+- Validation: `just check`, `just test`, `just build-gui`, and `git diff --check` passed. The exact installed binary hash matched the built bundle before signing; final installed bundle passed `codesign --verify --deep --strict`.
+- Residual: a native hover tooltip was not captured reliably through pointer automation; tooltip content grouping and accessibility remain covered by frontend tests.
+- Final result: passed.
+
+# 2026-08-11 — Grouped quota windows and non-blue Token heatmap
+
+- Antigravity now renders two model items (`Gemini`, `Claude 与 GPT`) instead of four top-level
+  quota items. Each item keeps visible `每周` and `5小时` subrows, distinct sage and amber tracks,
+  finite percentages, and refresh durations. Unknown window names remain visible instead of being
+  discarded; color is supplemental to the text label.
+- `buildTokenHeatmap` still represents exactly `[today - 89 days, today]`. Missing local days are
+  materialized as zero-value cells, so the UI contains 90 real calendar-day marks without adding a
+  fabricated 91st day. The fixed dark HUD palette is deep purple-gray at zero followed by four
+  purple levels with increasing brightness and saturation; green and amber are reserved outside
+  the heatmap, and zero remains the least prominent mark.
+- Validation passed: `just check`, `just test`, `just build-gui`, focused frontend tests (2 files,
+  16 tests), frontend typecheck/build, and `git diff --check`. The debug app was installed at
+  `/Applications/Agent Quota Trends.app`, ad-hoc signed, strictly verified, and restarted. The
+  prior installed builds remain recoverable under `/private/tmp/Agent Quota Trends.app.backup-20260811-1748`
+  and `/private/tmp/Agent Quota Trends.app.backup-20260811-1754`.
+- Native grouped-layout capture remains `Not verified`: the installed process is running, but
+  Computer Use timed out while acquiring the menu-bar-only app and `SystemUIServer`. No browser
+  preview or stale 16:39 capture was substituted for current native evidence.
+
+- Final result: implementation, tests, build, install, signature, and process verification passed;
+  current native visual evidence blocked.
+
+## Provider-only Token tooltip density — 2026-08-11
+
+- The heatmap tooltip now shows only the selected date, that day's completed-request Token total,
+  and non-zero provider subtotals in fixed Codex, ZCode, Qoder CN, and Antigravity order. Model
+  identifiers are no longer rendered; provider totals still aggregate the existing model activity
+  payload, and an explicit `暂无明细` state remains when no provider value is available.
+- Tooltip type and spacing are increased to 12px with 1.45 line height, 10px × 12px padding, and
+  a 164–260px width range. The tooltip no longer owns a max-height or vertical scrollbar.
+- Native hover capture remains `Not verified`; source tests and frontend gates cover the content
+  contract and CSS-level density change.
+
+## Token heatmap purple palette and spacing — 2026-08-11
+
+- The quota-to-Token divider no longer adds its former 10px top and 14px bottom margins. Together
+  with the two existing 8px content gaps, the measured provider-to-Token spacing is reduced from
+  41px to 17px; the native height calculation uses the same value.
+- The 90-day heatmap uses one ordered five-step purple scale from deep purple-gray to bright purple.
+  Sage and amber remain reserved for the weekly and five-hour quota windows and are not used in
+  Token intensity cells.
+- Validation passed: `just check`, `just test`, `just build-gui`, and `git diff --check`; the suites
+  include 49 core tests, 3 Tauri tests, and 43 frontend tests. The debug app was installed at
+  `/Applications/Agent Quota Trends.app`, ad-hoc signed, strictly verified, and restarted as PID
+  `5531`. The prior installation is recoverable at
+  `/private/tmp/Agent Quota Trends.app.backup-20260811-181601`.
+- Current native visual capture remains `Not verified`; source geometry, palette tests, build,
+  installation, signature, and process evidence are verified.
+
+## Unified green glass tray correction — 2026-08-11
+
+- Scope is limited to the existing 338px tray surface. Codex, Qoder 国内版, and Antigravity
+  weekly/five-hour bars and percentages now share one green semantic system. `每周` and `5小时`
+  remain visible in text, with restrained green shade/opacity differences providing a secondary
+  cue; quota semantics, data, tooltip content, dynamic height, and the verified 17px
+  provider-to-Token spacing are unchanged.
+- The 90-day Token heatmap uses the same ordered five-step green family: deep green-gray at zero,
+  then four brighter/more saturated levels. Yellow, purple, and blue are excluded from heatmap
+  intensity colors.
+- The tray keeps native vibrancy/backdrop-filter and now uses a more transparent dark gradient,
+  fine border, inset edge highlight, and restrained shadow. No additional cards, icons, DOM
+  wrappers, or decorative glow were added.
+- Focused frontend tests cover the green heatmap constants, 90-day mapping, provider ordering,
+  and visible weekly/five-hour labels. `just check`, `just test`, `just build-gui`, and
+  `git diff --check` pass with 49 core tests, 3 Tauri tests, and 43 frontend tests. The debug app
+  was installed at `/Applications/Agent Quota Trends.app`, ad-hoc signed, strictly verified, and
+  restarted as PID `14171` with its Codex app-server child. The previous installation remains
+  recoverable at `/private/tmp/Agent Quota Trends.app.backup-20260811-183544`.
+- Native compositing, computed colors, and tooltip hover remain `Not verified`; no stale screenshot
+  or browser preview was substituted for current native evidence, and no provider CLI was run.
+
+## Quota progress glass correction — 2026-08-11
+
+- This correction separates the visual roles: the tray window is restored to the neutral deep
+  blue-gray HUD surface, while the 4px quota tracks carry the restrained glass treatment. The
+  popover border, gradient, shadow, and backdrop-filter use the prior neutral values; the mistaken
+  `.tray-popover::before` inner highlight is removed. No DOM, height, data, or dependency changes
+  were made.
+- Quota tracks use a translucent neutral rail with fine inset top highlight and bottom shadow.
+  Codex, Qoder 国内版, and Antigravity fills remain in one green family; weekly and five-hour
+  fills use variable-specific vertical glass gradients and restrained opacity, with their text
+  labels retained as the primary distinction. The Token heatmap remains the existing ordered green
+  sequential scale and is not treated as glass.
+- Focused tray and Token component tests pass (17/17); `npm run check` passes all 8 frontend test
+  files (43/43), lint, and typecheck; `npm run build` succeeds. `git diff --check` passes.
+- `just check`, `just test`, `just build-gui`, and `git diff --check` pass with 49 core tests,
+  3 Tauri tests, and 43 frontend tests. The debug app was installed at
+  `/Applications/Agent Quota Trends.app`, ad-hoc signed, strictly verified, and restarted as PID
+  `21738` with its Codex app-server child. The prior installation remains recoverable at
+  `/private/tmp/Agent Quota Trends.app.backup-20260811-184612`.
+- Native compositing, computed styles, and hover capture remain `Not verified`; no stale screenshot
+  or browser preview was substituted for current native evidence, and no provider CLI was run.
+  `npm run format` remains outside the requested gate and reports unrelated dirty files
+  `src/components/app-shell.test.ts` and `src/components/token-activity-card.tsx`.
+
+## Provider-only Token tooltip — 2026-08-11
+
+- The heatmap tooltip now contains the selected date followed only by positive provider
+  subtotals in fixed Codex, ZCode, Qoder CN, and Antigravity order. The repeated `Token` daily
+  total line was removed because today's total remains visible in the outer Token section;
+  model identifiers and zero-value providers remain absent, while `暂无明细` is retained when
+  no provider detail exists.
+- Focused `token-activity-card.test.ts` passes (7/7), `npm run check` passes lint, typecheck,
+  and all frontend tests (8 files, 43/43), `npm run build` succeeds, and `git diff --check`
+  passes. Existing tooltip CSS and calendar layout were preserved.
+- `just check`, `just test`, and `just build-gui` also pass with 49 core tests, 3 Tauri tests,
+  and 43 frontend tests. The debug app was installed at `/Applications/Agent Quota Trends.app`,
+  ad-hoc signed, strictly verified, and restarted as PID `29928` with its Codex app-server child.
+  The previous installation remains recoverable at
+  `/private/tmp/Agent Quota Trends.app.backup-20260811-185647`.
+- Native hover capture remains `Not verified`; no provider CLI was started, and no current native
+  screenshot was substituted for source/test evidence.
+
+## Purple quota and Token palette — 2026-08-11
+
+- Scope is limited to the existing tray color roles. Codex and Qoder percentages, 4px quota
+  progress fills, today's Token value, and the 90-day heatmap now use one restrained purple
+  family. Antigravity `每周` remains the lighter variant and `5小时` the deeper/less opaque
+  variant; both labels remain visible and are the primary distinction.
+- The neutral deep blue-gray HUD, translucent track, DOM/data/tooltip contracts, and adaptive
+  height formula are unchanged. The five heatmap levels run from deep purple-gray zero to a
+  bright but non-fluorescent purple high value.
+- Focused tray/token Vitest passes (2 files, 17/17); `npm run check` passes lint, typecheck, and
+  all frontend tests (8 files, 43/43); `npm run build` succeeds; `git diff --check` passes.
+- AGY review operation `agy-review-2147a29f847844b4bfd9bb3bef844d27` requested
+  `gemini-3.1-pro-high` with high effort and completed with exit 0 / structured `SUCCESS` in
+  conversation `b9605abe-6067-4009-9d53-9bd38858589b`. Its effective model metadata was absent,
+  so the exact model remains `Not verified`. The one locally reproducible finding was closed by
+  assigning both Antigravity variants hue 257deg: weekly uses `hsl(257 72% 84%)`, while five-hour
+  uses `hsl(257 58% 68%)` plus the existing opacity difference. Pre/post review Worktree and target
+  diff fingerprints matched, confirming the external review made no source changes.
+- After that correction, `just check`, `just test`, `just build-gui`, and `git diff --check` pass
+  with 49 core tests, 3 Tauri tests, and 43 frontend tests. The debug app was installed at
+  `/Applications/Agent Quota Trends.app`, ad-hoc signed, strictly verified, and restarted as PID
+  `42979` with Codex app-server child PID `42986`. The prior installation remains recoverable at
+  `/private/tmp/Agent Quota Trends.app.backup-20260811-191748`.
+- Native compositing, computed colors, and hover capture remain `Not verified`; no browser or
+  stale native screenshot was substituted for current evidence. Computer Use timed out while
+  acquiring `SystemUIServer`, so no current native capture was accepted.
+
+## Token heatmap full-width geometry — 2026-08-11
+
+- The heatmap still renders exactly the latest 90 contiguous local calendar days,
+  including today, and the existing zero-filled gaps, tooltip content, month labels,
+  seven rows, and adaptive tray-height measurement are unchanged.
+- The library now uses 20px blocks with 2px gaps. For the 14-week case at the
+  338px tray's approximately 314px usable content width, the measured SVG width is
+  `14 × (20 + 2) − 2 = 306px`; the seven-row calendar box is 170px high including
+  the 18px month-label band. This leaves horizontal inset without a scroll region.
+- Focused geometry coverage is added to `token-activity-card.test.ts`; native macOS
+  computed geometry, tooltip hover, and compositing remain `Not verified` until a
+  current tray-window capture is available.
+- Full validation passes after the geometry change: `just check`, `just test`,
+  `just build-gui`, and `git diff --check`, covering 49 core tests, 3 Tauri tests,
+  and 44 frontend tests. The rebuilt debug app is installed at
+  `/Applications/Agent Quota Trends.app`, ad-hoc signed, strictly verified, and
+  running as PID `49899` with Codex app-server child PID `49913`. The previous
+  installation remains recoverable at
+  `/private/tmp/Agent Quota Trends.app.backup-20260811-192826`.
+- A current native capture is still `Not verified`: Computer Use timed out when
+  acquiring both the menu-bar app and `SystemUIServer`, so no stale or browser
+  screenshot was substituted for the installed runtime.
+- Validation passed: focused Token tests 8/8, `npm run check` (lint, typecheck, and
+  44/44 frontend tests), `npm run build` (with the existing large-chunk warning), and
+  `git diff --check`. No app install or launch was performed for this code-only task.
+
+## Current terminal contract — 2026-08-11
+
+- The current product/install name is Agent Quota Trends, installed at
+  `/Applications/Agent Quota Trends.app`; earlier QA entries retain their original
+  historical names and measurements.
+- The tray Token heatmap uses exactly 90 contiguous local calendar days. Its usual
+  14-column layout uses 20px blocks with 2px gaps, for `14 × (20 + 2) − 2 = 306px`.
+- Tray Token totals and heatmap intensity use completed-request `totalTokens`.
+  `inputTokens`, `cachedInputTokens`, and `nonCachedInputTokens` are diagnostic only.
+- Heatmap tooltip content is the selected date followed by positive provider subtotals
+  in fixed provider order. It does not repeat the daily total and does not render model
+  subrows; `暂无明细` remains the no-detail state.
+- Settings keeps resolved executable paths internal and presents the fixed provider
+  catalog in one column. This section records the terminal contract without rewriting
+  the historical timeline above.
+
+## Final local delivery verification — 2026-08-11
+
+- The final source baseline passes `cargo fmt --all -- --check`, frontend formatting,
+  `just check`, `just test`, `just build-gui`, and `git diff --check`. Coverage is
+  60 core tests, 7 Tauri tests, and 44 frontend tests.
+- The freshly built debug bundle was installed at
+  `/Applications/Agent Quota Trends.app`, ad-hoc signed, and strictly verified. It is
+  running as PID `88533` with the resolved Volta Codex app-server child chain rooted at
+  PID `88555`. The replaced bundle remains recoverable at
+  `/private/tmp/Agent Quota Trends.app.backup-20260811-203557`.
+- Current native visual evidence remains `Not verified`: Computer Use timed out when
+  targeting both the installed app path and the `Agent Quota Trends` app name. No stale
+  screenshot or browser rendering was substituted for the installed Tauri window.

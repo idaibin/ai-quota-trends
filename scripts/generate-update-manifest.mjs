@@ -17,7 +17,7 @@ const archiveUrl = `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(basename(
 
 const manifest = {
   version,
-  notes: process.env.UPDATE_NOTES ?? `Codex Quota Trends ${version}`,
+  notes: process.env.UPDATE_NOTES ?? `Agent Quota Trends ${version}`,
   pub_date: new Date().toISOString(),
   platforms: {
     "darwin-universal": {

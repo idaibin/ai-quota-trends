@@ -24,7 +24,7 @@ if [[ "$version" != "$package_version" || "$version" != "$workspace_version" ]];
 fi
 
 bundle_dir="$root_dir/target/universal-apple-darwin/release/bundle"
-archive="$bundle_dir/macos/Codex Quota Trends.app.tar.gz"
+archive="$bundle_dir/macos/Agent Quota Trends.app.tar.gz"
 signature="$archive.sig"
 manifest="$bundle_dir/macos/latest.json"
 
@@ -41,8 +41,8 @@ cd "$root_dir"
 node scripts/generate-update-manifest.mjs "$version" "$archive" "$signature" "$manifest"
 
 print "Local release artifacts:"
-print "  $bundle_dir/macos/Codex Quota Trends.app"
+print "  $bundle_dir/macos/Agent Quota Trends.app"
 print "  $archive"
 print "  $signature"
-print "  $bundle_dir/dmg/Codex Quota Trends_${version}_universal.dmg"
+print "  $bundle_dir/dmg/Agent Quota Trends_${version}_universal.dmg"
 print "  $manifest"

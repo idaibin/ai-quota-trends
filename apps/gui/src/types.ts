@@ -31,9 +31,9 @@ export interface UsageSpeeds {
 }
 
 export interface TokenUsageDay {
-  /** Account-level daily Token total, or today's local-input fallback when unavailable. */
+  /** Completed-request Token total used by the tray's Token metric and heatmap. */
   totalTokens: number;
-  /** Locally observed input Tokens; cache fields are a split of this value, not totalTokens. */
+  /** Locally observed input-token diagnostics; cache fields split this value, not totalTokens. */
   inputTokens: number;
   cachedInputTokens: number;
   nonCachedInputTokens: number;
@@ -48,7 +48,16 @@ export interface TokenUsageHistoryDay extends TokenUsageDay {
 export interface TokenActivity {
   today: TokenUsageDay;
   history: TokenUsageHistoryDay[];
+  models: ModelTokenActivity[];
   lastScannedAt: number | null;
+}
+
+export interface ModelTokenActivity {
+  providerId: string;
+  modelId: string;
+  displayName: string;
+  today: TokenUsageDay;
+  history: TokenUsageHistoryDay[];
 }
 
 export interface DashboardData {
@@ -102,7 +111,7 @@ export interface AlertRecord {
 }
 
 export interface AppSettings {
-  codexPath: string;
+  enabledProviderIds: ProviderId[];
   pollIntervalSeconds: number;
   trayHistoryHours: number;
   rapidDrainPercent: number;
@@ -114,6 +123,42 @@ export interface AppSettings {
   dailySummary: boolean;
   retentionDays: number;
   theme: ThemeMode;
+}
+
+export type ProviderId = "codex" | "zcode" | "qoder-cn" | "antigravity";
+
+export interface ProviderProbe {
+  id: ProviderId;
+  displayName: string;
+  commandName: string;
+  executablePath: string | null;
+  version: string | null;
+  status: "available" | "missing" | "error";
+  quotaCollectionSupported: boolean;
+  supportNote: string;
+}
+
+export type ProviderQuotaStatus = "available" | "unavailable" | "error";
+
+export interface ProviderQuotaPool {
+  name: string;
+  models: string[];
+  used: number | null;
+  total: number | null;
+  remainingPercent: number | null;
+  refreshAfterSeconds: number | null;
+  refreshRaw: string | null;
+}
+
+export interface ProviderQuota {
+  id: ProviderId;
+  displayName: string;
+  status: ProviderQuotaStatus;
+  plan: string | null;
+  expiresAtRaw: string | null;
+  expiresAtEpoch: number | null;
+  pools: ProviderQuotaPool[];
+  message: string | null;
 }
 
 export interface DatabaseStats {

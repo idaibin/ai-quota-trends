@@ -10,7 +10,14 @@ until this gate passes. See `feasibility-poc.md`.
 
 ## Shape
 
-Codex Quota Trends is a Client/Tauri repository.
+Agent Quota Trends is a Client/Tauri repository.
+
+The provider catalog is deliberately fixed. Codex owns the persistent quota collector.
+ZCode contributes read-only model-level Token activity from its local usage database.
+Qoder CN and Antigravity expose their account quota through their installed CLI usage
+screens; the app reads those screens on demand through a bounded PTY and does not read
+provider credentials, send model prompts, or persist those observations as trend
+snapshots. This is not a plugin system.
 
 ```text
 apps/gui/src         React presentation and interaction
@@ -25,14 +32,20 @@ crates/codex-quota-core
 The dependency direction is `React -> Tauri commands -> core -> SQLite/app-server`.
 The frontend never reads the database or starts Codex directly.
 The dashboard command owns the presentation-ready 24-hour and seven-day histories
-plus the 24-week daily usage aggregation. The activity command returns recent
-persisted collector events; the tray does not synthesize either dataset.
+plus the 24-week daily usage aggregation. It also rebuilds visible Token activity
+from the fixed provider/model rows before returning the dashboard DTO. The activity
+command returns recent persisted collector events; the tray does not synthesize
+either dataset.
 
 The collector reads account-level daily Token totals from Codex app-server's
-`account/usage/read` response and persists them for internal data continuity; the tray
-does not expose them as an additional metric. The visible Token total, heatmap, and
-tooltip use locally observed input Tokens so cached plus non-cached input remains a
-valid breakdown of the displayed total. A separate local runtime scans only
+`account/usage/read` response and persists them for internal data continuity; the
+storage-layer `token_activity` result may overlay those official buckets for that
+continuity. Before the dashboard result is exposed, visible history and today's
+total are rebuilt from Codex and additional provider/model rows; when no model row
+exists, the visible total is zero. The tray does not expose account/usage/read as an
+additional or visible metric. Visible Token totals, heatmap, and tooltip use
+completed-request total Tokens. Cached plus non-cached input remains a separate
+diagnostic breakdown. A separate local runtime scans only
 `token_count.last_token_usage` metadata from Codex session and archived-session
 JSONL files for input totals, cache split, calls, and distinct source sessions. Spawned
 subagent rollouts can replay their
@@ -42,16 +55,19 @@ and the parser version prevent unchanged logs from being rescanned while still
 forcing a rebuild when aggregation semantics change. Prompt and response content is
 never stored by this application.
 
-Each daily activity record keeps account `total_tokens` and locally observed
-`input_tokens` independent. The UI uses only `input_tokens` as Token activity;
-`cached_input_tokens` and `non_cached_input_tokens` split it exactly, so their sum
-equals the displayed Token value.
+Each daily activity record keeps completed-request `total_tokens` and locally
+observed `input_tokens` independent. The tray's visible Token total and heatmap
+use model-rebuilt `total_tokens`; `input_tokens`, `cached_input_tokens`, and
+`non_cached_input_tokens` remain diagnostic fields, with the cache split summing
+to `input_tokens` rather than to the displayed Token value.
 
 ## Collection lifecycle
 
 1. Tauri starts one background collector.
-2. The core starts `codex app-server --listen stdio://` using the configured executable path, or
-   auto-detects Codex from `PATH`, Volta, Homebrew, and common local install locations.
+2. The core starts `codex app-server --listen stdio://` using the shared resolver. A non-empty
+   legacy `codexPath` override is used first; empty values use `PATH`, then Volta/local installs
+   and Homebrew locations. Settings exposes only provider status and version; the path remains
+   internal.
 3. It sends `initialize`, then `initialized`.
 4. It reads `account/read` and `account/rateLimits/read`.
 5. A rate-limit response is normalized into one `QuotaSnapshot` per `limitId`.

@@ -1,4 +1,5 @@
 import { Gear, Moon, Sun } from "@phosphor-icons/react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ReactNode } from "react";
 import type { ThemeMode } from "../types";
 
@@ -21,9 +22,20 @@ export function AppShell({
 }) {
   const title = route === "settings" ? "设置" : "概览";
   const compactSettings = route === "settings";
+  const handleTitlebarMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !window.__TAURI_INTERNALS__) return;
+    void getCurrentWindow().startDragging();
+  };
   return (
     <div className={`app-frame ${compactSettings ? "app-frame--settings" : ""}`}>
       <div className={`main-shell ${compactSettings ? "main-shell--settings" : ""}`}>
+        {compactSettings && (
+          <div
+            className="settings-titlebar"
+            aria-hidden="true"
+            onMouseDown={handleTitlebarMouseDown}
+          />
+        )}
         {!compactSettings && (
           <header className="topbar">
             <div className="topbar__leading">

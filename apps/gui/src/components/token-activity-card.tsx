@@ -1,20 +1,31 @@
-import { useState } from "react";
-import type { MouseEvent } from "react";
-import type { TokenActivity, TokenUsageHistoryDay } from "../types";
+import { ActivityCalendar } from "react-activity-calendar";
+import type { Activity } from "react-activity-calendar";
+import type { Ref } from "react";
+import "react-activity-calendar/tooltips.css";
+import type { ModelTokenActivity, TokenActivity, TokenUsageHistoryDay } from "../types";
 
 const HEATMAP_DAYS = 90;
+export const TOKEN_HEATMAP_BLOCK_SIZE = 20;
+export const TOKEN_HEATMAP_BLOCK_MARGIN = 2;
+const PROVIDER_ORDER = ["codex", "zcode", "qoder-cn", "antigravity"];
+const PROVIDER_NAMES: Record<string, string> = {
+  codex: "Codex",
+  zcode: "ZCode",
+  "qoder-cn": "Qoder 国内版",
+  antigravity: "Antigravity",
+};
+
+export const TOKEN_HEATMAP_COLORS = [
+  "#2a2540",
+  "#493b6c",
+  "#644e91",
+  "#8064b6",
+  "#ab8bdd",
+] as const;
 
 export interface TokenHeatmapCell extends TokenUsageHistoryDay {
   dayOfWeek: number;
   weekIndex: number;
-}
-
-interface HoveredTokenCell {
-  cell: TokenHeatmapCell;
-  x: number;
-  y: number;
-  horizontal: "start" | "center" | "end";
-  vertical: "above";
 }
 
 const parseDay = (day: string) => {
@@ -44,8 +55,6 @@ export function tokenHeatLevel(value: number, maximum: number): number {
   if (value <= 0 || maximum <= 0) return 0;
   return Math.min(4, Math.max(1, Math.ceil(Math.sqrt(value / maximum) * 4)));
 }
-
-export const tokenTooltipVerticalPlacement = (_dayOfWeek: number): "above" => "above";
 
 export function buildTokenHeatmap(
   history: TokenUsageHistoryDay[],
@@ -80,145 +89,145 @@ const todayDay = () => {
   ).padStart(2, "0")}`;
 };
 
-export const tokenTooltipDetails = (cell: TokenHeatmapCell) => {
+export const tokenTooltipDetails = (cell: TokenHeatmapCell, models: ModelTokenActivity[] = []) => {
   const [, month, day] = cell.day.split("-").map(Number);
+  const providers = new Map<
+    string,
+    {
+      providerId: string;
+      name: string;
+      tokens: number;
+    }
+  >();
+  for (const model of models) {
+    const tokens = model.history.find((usage) => usage.day === cell.day)?.totalTokens ?? 0;
+    if (!Number.isFinite(tokens) || tokens <= 0 || !PROVIDER_ORDER.includes(model.providerId)) {
+      continue;
+    }
+    const provider = providers.get(model.providerId) ?? {
+      providerId: model.providerId,
+      name: PROVIDER_NAMES[model.providerId] ?? model.providerId,
+      tokens: 0,
+    };
+    provider.tokens += tokens;
+    providers.set(model.providerId, provider);
+  }
+  const providerDetails = Array.from(providers.values()).sort((left, right) => {
+    const leftOrder = PROVIDER_ORDER.indexOf(left.providerId);
+    const rightOrder = PROVIDER_ORDER.indexOf(right.providerId);
+    return (
+      (leftOrder < 0 ? PROVIDER_ORDER.length : leftOrder) -
+        (rightOrder < 0 ? PROVIDER_ORDER.length : rightOrder) ||
+      left.providerId.localeCompare(right.providerId)
+    );
+  });
   return {
     date: `${month}月${day}日`,
-    token: formatTokenCount(cell.inputTokens),
-    cached: formatTokenCount(cell.cachedInputTokens),
-    nonCached: formatTokenCount(cell.nonCachedInputTokens),
-    sessions: String(cell.sessionCount),
-    calls: String(cell.callCount),
+    providers: providerDetails,
   };
 };
 
-const buildMonthLabels = (cells: TokenHeatmapCell[]) => {
-  const labels: Array<{ month: string; weekIndex: number }> = [];
-  let previousMonth = -1;
-  for (const cell of cells) {
-    const date = parseDay(cell.day);
-    if (date.getUTCMonth() === previousMonth) continue;
-    previousMonth = date.getUTCMonth();
-    const month = `${date.getUTCMonth() + 1}月`;
-    if (labels.at(-1)?.weekIndex === cell.weekIndex) labels.pop();
-    labels.push({ month, weekIndex: cell.weekIndex });
+/**
+ * The calendar library owns tooltip positioning and collision handling. Keep
+ * the content plain text so the provider totals remain readable in a native
+ * popover without adding a second tooltip layer.
+ */
+export const formatTokenTooltip = (cell: TokenHeatmapCell, models: ModelTokenActivity[] = []) => {
+  const details = tokenTooltipDetails(cell, models);
+  const lines = [details.date];
+  if (details.providers.length === 0) {
+    lines.push("暂无明细");
+    return lines.join("\n");
   }
-  return labels;
+  lines.push(
+    ...details.providers.map(
+      (provider) => `${provider.name}  ${formatTokenCount(provider.tokens)}`,
+    ),
+  );
+  return lines.join("\n");
 };
 
-export function TokenActivityCard({ activity }: { activity: TokenActivity }) {
-  const [hovered, setHovered] = useState<HoveredTokenCell | null>(null);
+export function TokenActivityCard({
+  activity,
+  sectionRef,
+}: {
+  activity: TokenActivity;
+  sectionRef?: Ref<HTMLElement>;
+}) {
   const cells = buildTokenHeatmap(activity.history, todayDay());
-  const maximum = Math.max(0, ...cells.map((cell) => cell.inputTokens));
-  const weekCount = (cells.at(-1)?.weekIndex ?? 0) + 1;
-  const labels = buildMonthLabels(cells);
-  const activeDays = cells.filter((cell) => cell.inputTokens > 0);
+  const maximum = Math.max(0, ...cells.map((cell) => cell.totalTokens));
+  const activeDays = cells.filter((cell) => cell.totalTokens > 0);
   const rangeSummary = activeDays.length
     ? `最近90天有 ${activeDays.length} 天记录 Token 活动，最高单日 ${formatTokenCount(maximum)}。`
     : "最近90天暂无 Token 活动记录。";
-  const hoveredDetails = hovered ? tokenTooltipDetails(hovered.cell) : null;
-
-  const handleCellEnter = (event: MouseEvent<HTMLSpanElement>, cell: TokenHeatmapCell) => {
-    const heatmap = event.currentTarget.closest<HTMLElement>(".tray-token-heatmap");
-    if (!heatmap) return;
-    const heatmapBounds = heatmap.getBoundingClientRect();
-    const cellBounds = event.currentTarget.getBoundingClientRect();
-    const x = cellBounds.left + cellBounds.width / 2 - heatmapBounds.left;
-    setHovered({
-      cell,
-      x,
-      y: cellBounds.top - heatmapBounds.top,
-      horizontal:
-        x < heatmapBounds.width * 0.3 ? "start" : x > heatmapBounds.width * 0.7 ? "end" : "center",
-      vertical: tokenTooltipVerticalPlacement(cell.dayOfWeek),
-    });
-  };
-
+  const cellsByDay = new Map(cells.map((cell) => [cell.day, cell]));
+  const calendarData = cells.map((cell) => ({
+    date: cell.day,
+    count: cell.totalTokens,
+    level: tokenHeatLevel(cell.totalTokens, maximum),
+  }));
   return (
-    <section className="tray-card tray-token-card" aria-label="Token 使用统计">
+    <section ref={sectionRef} className="tray-token-section" aria-label="Token 使用统计">
       <dl className="tray-token-metrics">
         <div className="tray-token-metric tray-token-metric--primary">
           <dt>今日 Token</dt>
-          <dd>{formatTokenCount(activity.today.inputTokens)}</dd>
-        </div>
-        <div className="tray-token-metric">
-          <dt>会话</dt>
-          <dd>{activity.today.sessionCount}</dd>
-        </div>
-        <div className="tray-token-metric">
-          <dt>调用</dt>
-          <dd>{activity.today.callCount}</dd>
+          <dd>{formatTokenCount(activity.today.totalTokens)}</dd>
         </div>
       </dl>
-      <div
-        className="tray-token-heatmap"
-        role="img"
-        aria-label={rangeSummary}
-        onMouseLeave={() => setHovered(null)}
-      >
-        <div
-          className="tray-token-heatmap__cells"
-          aria-hidden="true"
-          style={{ gridTemplateColumns: `repeat(${weekCount}, 12px)` }}
-        >
-          {cells.map((cell) => (
-            <span
-              key={cell.day}
-              className={`tray-token-heatmap__cell tray-token-heatmap__cell--${tokenHeatLevel(
-                cell.inputTokens,
-                maximum,
-              )}${hovered?.cell.day === cell.day ? " tray-token-heatmap__cell--selected" : ""}`}
-              style={{ gridColumnStart: cell.weekIndex + 1, gridRowStart: cell.dayOfWeek + 1 }}
-              onMouseEnter={(event) => handleCellEnter(event, cell)}
-            />
-          ))}
-        </div>
-        <div
-          className="tray-token-heatmap__months"
-          aria-hidden="true"
-          style={{ gridTemplateColumns: `repeat(${weekCount}, 12px)` }}
-        >
-          {labels.map((label) => (
-            <span
-              key={`${label.month}-${label.weekIndex}`}
-              style={{ gridColumnStart: label.weekIndex + 1 }}
-            >
-              {label.month}
-            </span>
-          ))}
-        </div>
-        {hovered && hoveredDetails && (
-          <div
-            className={`tray-token-tooltip tray-token-tooltip--${hovered.horizontal} tray-token-tooltip--${hovered.vertical}`}
-            style={{ left: hovered.x, top: hovered.y }}
-            aria-hidden="true"
-          >
-            <strong>{hoveredDetails.date}</strong>
-            <div className="tray-token-tooltip__total">
-              <span>Token</span>
-              <b>{hoveredDetails.token}</b>
-            </div>
-            <dl>
-              <div>
-                <dt>缓存</dt>
-                <dd>{hoveredDetails.cached}</dd>
-              </div>
-              <div>
-                <dt>非缓存</dt>
-                <dd>{hoveredDetails.nonCached}</dd>
-              </div>
-              <div>
-                <dt>会话</dt>
-                <dd>{hoveredDetails.sessions}</dd>
-              </div>
-              <div>
-                <dt>调用</dt>
-                <dd>{hoveredDetails.calls}</dd>
-              </div>
-            </dl>
-          </div>
-        )}
+      <div className="tray-token-heatmap" role="img" aria-label={rangeSummary}>
+        <span className="tray-token-range">最近 90 天</span>
+        <ActivityCalendar
+          className="tray-token-calendar"
+          colorScheme="dark"
+          data={calendarData}
+          blockMargin={TOKEN_HEATMAP_BLOCK_MARGIN}
+          blockRadius={3}
+          blockSize={TOKEN_HEATMAP_BLOCK_SIZE}
+          fontSize={10}
+          labels={{
+            months: [
+              "1月",
+              "2月",
+              "3月",
+              "4月",
+              "5月",
+              "6月",
+              "7月",
+              "8月",
+              "9月",
+              "10月",
+              "11月",
+              "12月",
+            ],
+            weekdays: ["日", "一", "二", "三", "四", "五", "六"],
+          }}
+          maxLevel={4}
+          minLevel={0}
+          showColorLegend={false}
+          showTotalCount={false}
+          showWeekdayLabels={false}
+          theme={{ dark: [...TOKEN_HEATMAP_COLORS] }}
+          tooltips={{
+            activity: {
+              offset: 7,
+              placement: "top",
+              text: (activityDay: Activity) => {
+                const cell = cellsByDay.get(activityDay.date);
+                return cell
+                  ? formatTokenTooltip(cell, activity.models)
+                  : `${activityDay.date}\n暂无明细`;
+              },
+              withArrow: true,
+            },
+          }}
+          weekStart={0}
+        />
       </div>
+      <ul className="tray-token-accessible-details" aria-label="每日 Token 明细">
+        {activeDays.map((cell) => (
+          <li key={cell.day}>{formatTokenTooltip(cell, activity.models)}</li>
+        ))}
+      </ul>
     </section>
   );
 }

@@ -1,4 +1,4 @@
-# Codex Quota Trends Agent Guide
+# Agent Quota Trends Agent Guide
 
 ## Scope
 
@@ -31,7 +31,7 @@ interaction.
 - `just test`
 - `just build-gui`
 - UI changes default to building, backing up and replacing
-  `/Applications/Codex Quota Trends.app`, then restarting it. Skip installation
+  `/Applications/Agent Quota Trends.app`, then restarting it. Skip installation
   only when the user explicitly requests code-only work.
 - Verify the installed binary, signature, app-server child process, and affected
   real Tauri window. Capture its `CGWindowID`, inspect the screenshot, and update
