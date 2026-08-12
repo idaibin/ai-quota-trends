@@ -14,9 +14,10 @@ and used only for Settings. The generated transparent PNG app mark under
   popover selection never changes the menu bar source.
 - Menu bar popover: 338px wide, frameless, translucent, flush with the menu bar, and
   hidden on blur. A neutral dark blue-gray native macOS HUD surface uses a transparent
-  dark gradient, fine light border, restrained inner-edge highlight, and micro-shadow;
-  the glass-like treatment belongs to the quota progress tracks, not to a colored window
-  background, and there is no decorative pointer or glare.
+  dark gradient, fine light border, restrained inner-edge highlight, and micro-shadow.
+  Low-opacity mint, sky, and coral radial glows may tint the neutral base to reinforce
+  provider identity without becoming a colored window background. The stronger glass-like
+  treatment belongs to the quota progress tracks, and there is no decorative pointer or glare.
 - The popover uses one continuous dark translucent HUD inside 12px content insets, followed by one
   borderless Token section. A 1px divider appears only when the quota row stack is
   non-empty and relies on the surrounding 8px stack gap without extra vertical margins;
@@ -29,17 +30,18 @@ and used only for Settings. The generated transparent PNG app mark under
   section. The initial 338×500 window is only a safe startup size. The calendar uses
   20px blocks with 2px gaps; its usual 14-column layout occupies 306px, so all seven
   rows remain visible without horizontal scrolling.
-  Every quota row has tool/pool name on the left, an optional muted reset duration immediately after the name on the same line, remaining percentage on the right, and a 4px progress track below. Quantifiable finite values use a 4px rounded progress track with a neutral translucent glass track, fine inset top highlight/bottom shadow, and restrained purple translucent vertical-gradient fills; unavailable values are omitted and never use a fabricated fill. Provider status icons and versions are not
+  Every quota row has tool/pool name on the left, an optional muted reset duration immediately after the name on the same line, remaining percentage on the right, and a 4px progress track below. Quantifiable finite values use a 4px rounded progress track with a neutral translucent glass track, fine inset top highlight/bottom shadow, and restrained provider-specific gradient fills; unavailable values are omitted and never use a fabricated fill. Codex uses mint emerald (`#059669` → `#34d399`), Qoder 国内版 uses sunset coral (`#ea580c` → `#ff7849`), Antigravity weekly windows use sky cyan (`#0284c7` → `#38bdf8`), and Antigravity five-hour windows use amethyst violet (`#7c3aed` → `#a78bfa`). The visible percentage uses the matching terminal color. At a displayed remaining value of 15% or less, the percentage and fill switch to warning amber; at 5% or less they switch to danger rose. Provider status icons and versions are not
   shown. Provider and pool names use 14px type, supporting quota metadata stays at 10.5px, and all percentages use 14px type (today's Token total uses 22px).
   Codex shows "Codex" plus a compact countdown such as "4小时18分"; omit "后重置", reset-card count/expiry, and used/remaining prose.
   Qoder shows "Qoder 国内版", with no invented reset time, percent on the right, track, and one muted line combining actual "used / total · plan" only when present; omit expiry and labels.
-  Antigravity groups finite windows under one model item for each model group: the `Gemini` item and `Claude 与 GPT` item each contain compact `每周` and `5小时` rows when present. Codex, Qoder 国内版, and both Antigravity windows use one purple quota system; the Antigravity weekly and five-hour variants share hue `257deg` and differ only in restrained lightness/saturation plus their existing opacity (`每周` lighter, `5小时` deeper), while the visible `每周` and `5小时` labels remain the primary distinction. Color is never the only encoding. Unknown window names remain as visible rows in their model group. Place the compact refresh duration such as "167小时57分" after the window label on one line, percent on the right, and track. Omit "后刷新" and fallback prose. Do not fabricate missing durations.
+  Antigravity groups finite windows under one model item for each model group: the `Gemini` item and `Claude 与 GPT` item each contain compact `每周` and `5小时` rows when present. The weekly sky and five-hour violet palettes supplement the visible `每周` and `5小时` labels; color is never the only encoding. Unknown window names remain as visible rows in their model group. Place the compact refresh duration such as "167小时57分" after the window label on one line, percent on the right, and track. Omit "后刷新" and fallback prose. Do not fabricate missing durations.
   CLI reads are bounded, never send a
   model prompt, and quota rows are rendered only from current finite values. Tray
   quota reads for enabled Qoder CN and Antigravity providers run on initial display, tray focus, and a five-minute fallback; an
   in-flight refresh keeps the current rows until its response atomically replaces
   them, while errors clear the stale rows. The popover does not render a quota trend chart.
-- Token activity: the borderless section below quota shows today's Token; the
+- Token activity: the borderless section below quota shows today's Token in warm gold
+  (`#fbbf24`) so the activity total remains visually distinct from quota status; the
   dashboard rebuilds this visible provider/model completed-request total from
   model rows, so storage-only account buckets are not rendered and no model rows
   means zero. A continuous 90-local-day `react-activity-calendar` heatmap fills missing days with zero and encodes completed-request total
@@ -79,8 +81,8 @@ Window, panel, and control radii are respectively 12px, 10–12px, and 9px acros
 the tray and Settings surfaces.
 
 The tray and Settings share system-aware light and dark materials. System blue remains
-available to Settings and active controls; tray quota data uses the single purple
-system described above, while red remains semantic. The
+available to Settings and active controls; tray quota data uses the provider identity
+palettes described above, with amber and rose reserved for low-quota warning and danger. The
 layout follows a compact native-menu rhythm: 8px between tray groups, 12px internal
 content insets, 6px dense text spacing, and 16px between Settings groups.
 

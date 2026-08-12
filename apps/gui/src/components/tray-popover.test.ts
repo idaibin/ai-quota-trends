@@ -132,6 +132,39 @@ describe("tray quota overview", () => {
     expect(calculateTrayHeight({ providerStackHeight: 64, tokenSectionHeight: 180 })).toBe(287);
   });
 
+  it("aligns Codex low-quota status with the rounded visible percentage", () => {
+    const renderRemainingPercent = (remainingPercent: number) =>
+      renderToStaticMarkup(
+        createElement(TrayPopover, {
+          data: {
+            ...demoDashboard,
+            snapshot: {
+              ...demoDashboard.snapshot,
+              windows: [
+                {
+                  ...demoDashboard.snapshot.windows[0],
+                  usedPercent: 100 - remainingPercent,
+                },
+              ],
+            },
+          },
+          settings: demoSettings,
+          providers: [],
+        }),
+      );
+
+    const warningMarkup = renderRemainingPercent(15.4);
+    expect(warningMarkup).toContain(">15%</b>");
+    expect(warningMarkup).toContain("tray-quota-status--warning");
+
+    const dangerMarkup = renderRemainingPercent(5.4);
+    expect(dangerMarkup).toContain(">5%</b>");
+    expect(dangerMarkup).toContain("tray-quota-status--danger");
+
+    expect(renderRemainingPercent(15.6)).not.toContain("tray-quota-status--warning");
+    expect(renderRemainingPercent(5.6)).toContain("tray-quota-status--warning");
+  });
+
   it("shows the fixed four-tool catalog without a selector or Codex trend chart", () => {
     const now = Math.floor(Date.now() / 1_000);
     const markup = renderToStaticMarkup(
@@ -284,6 +317,10 @@ describe("tray quota overview", () => {
     expect(markup).toContain('aria-label="Claude 与 GPT 额度"');
     expect(markup).toContain('aria-label="Claude 与 GPT 每周 额度"');
     expect(markup).toContain('aria-label="Claude 与 GPT 5小时 额度"');
+    expect(markup).toContain('data-provider="codex"');
+    expect(markup).toContain('data-provider="qoder-cn"');
+    expect(markup).toContain('data-group="gemini"');
+    expect(markup).toContain('data-group="claude"');
     expect(markup.match(/tray-quota-row/g)).toHaveLength(2);
     expect(markup.match(/tray-quota-group/g)).toHaveLength(4);
     expect(markup.match(/tray-quota-window-row /g)).toHaveLength(4);

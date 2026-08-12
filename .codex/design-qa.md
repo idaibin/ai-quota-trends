@@ -1,5 +1,25 @@
 # Design QA
 
+## Tray Popover Color Optimization — 2026-08-12
+
+- Scope: Resolve severe color homogenization in the macOS menu bar tray popover where all provider bars and text metrics previously rendered in a uniform violet tone.
+- Visual System Enhancements:
+  - Implemented distinct provider brand palettes using `data-provider` and `data-group` target selectors:
+    - Codex: Mint Emerald (`#34d399` text, `#059669` → `#34d399` gradient bar with emerald glow).
+    - Antigravity Weekly Window: Sky Cyan (`#38bdf8` text, `#0284c7` → `#38bdf8` gradient bar with cyan glow).
+    - Antigravity 5-Hour Window: Amethyst Violet (`#a78bfa` text, `#7c3aed` → `#a78bfa` gradient bar with indigo glow).
+    - Qoder CN: Sunset Coral / Orange (`#ff7849` text, `#ea580c` → `#ff7849` gradient bar with coral glow).
+  - Key Token Activity metric highlighted with Warm Gold (`#fbbf24`) to differentiate daily activity from quota percentage tracks.
+  - Added dynamic low-quota warning/danger states (`.tray-quota-status--warning` for ≤15%, `.tray-quota-status--danger` for ≤5%) which dynamically glow in Amber (`#f59e0b`) and Rose Red (`#f43f5e`).
+  - Enhanced tray HUD background backdrop with multi-hue radial glows corresponding to active tool palettes.
+- Boundary behavior: status selection now uses the same rounded percentage rendered to the user. Focused coverage proves visible `15%` is warning, visible `5%` is danger, `16%` remains normal, and `6%` remains warning.
+- Validation: `just fmt`, `just check`, `just test`, `just build-gui`, and `git diff --check` pass. The suites cover 60 core tests, 7 Tauri tests, and 45 frontend tests (112 total).
+- Installed runtime: the rebuilt debug bundle is installed at `/Applications/Agent Quota Trends.app`, ad-hoc signed, and strictly verified. PID `38867` started at 11:30:16 after replacement and owns Codex app-server child PID `38881`; the prior installation is recoverable at `/private/tmp/Agent Quota Trends.app.backup-20260812-112954`.
+- Native pass 1: `.codex/artifacts/native-qa-20260812/tray-color-pass1.png`, PID `38867`, `CGWindowID 47970`, logical bounds `338×577`, SHA-256 `acda08fa07f247eb3b39b4c650b5e5f26e7f21101e29696e5d963424fe7742ae`.
+- Native pass 2: `.codex/artifacts/native-qa-20260812/tray-color-pass2.png`, same installed process/window and bounds, SHA-256 `ec3413759c2c4f9b6bfc8615f095f7753ab81511506b8b8e8dba5ed824e8d7aa`. Both passes show distinct Codex/Qoder/weekly/five-hour palettes, warm-gold Token total, live `13.8%` amber warning, live `0%` rose danger, and all quota and Token rows without clipping.
+
+final result: passed
+
 ## Tray OpenUsage-v2 provider cards — 2026-08-10
 
 - Selected design source: `.codex/artifacts/tray-openusage-v2/design.svg` and

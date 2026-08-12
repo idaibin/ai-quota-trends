@@ -69,10 +69,21 @@ export const formatResetCountdown = (resetAt: number | null, now: number) => {
 
 export const formatQuotaPercent = (remainingPercent: number | null) => {
   if (remainingPercent == null || !Number.isFinite(remainingPercent)) return "--";
+  return `${displayQuotaPercent(remainingPercent)}%`;
+};
+
+const displayQuotaPercent = (remainingPercent: number) => {
   const bounded = Math.max(0, Math.min(100, remainingPercent));
   const digits = Math.abs(bounded - Math.round(bounded)) < 0.05 ? 0 : 1;
-  return `${bounded.toFixed(digits)}%`;
+  return Number(bounded.toFixed(digits));
 };
+
+const quotaStatusClass = (displayedRemainingPercent: number) =>
+  displayedRemainingPercent <= 5
+    ? " tray-quota-status--danger"
+    : displayedRemainingPercent <= 15
+      ? " tray-quota-status--warning"
+      : "";
 
 export const formatRefreshDuration = (seconds: number | null) => {
   if (seconds == null) return null;
@@ -332,11 +343,14 @@ export function TrayPopover({
 
                 if (isCodex) {
                   const remainingPercent = boundedPercent(100 - (quotaWindow?.usedPercent ?? 0));
+                  const displayedRemainingPercent = Math.round(remainingPercent);
                   const resetCountdown = formatResetCountdown(quotaWindow?.resetAt ?? null, now);
+                  const statusClass = quotaStatusClass(displayedRemainingPercent);
                   return [
                     <div
                       key={provider.id}
-                      className="tray-quota-row"
+                      className={`tray-quota-row${statusClass}`}
+                      data-provider="codex"
                       aria-label={`${provider.displayName} 额度`}
                     >
                       <div className="tray-quota-header">
@@ -351,7 +365,7 @@ export function TrayPopover({
                             </span>
                           ) : null}
                         </div>
-                        <b className="tray-quota-percent">{Math.round(remainingPercent)}%</b>
+                        <b className="tray-quota-percent">{displayedRemainingPercent}%</b>
                       </div>
                       <div
                         className="tray-quota-track"
@@ -370,68 +384,80 @@ export function TrayPopover({
                 if (isAntigravity && providerQuota) {
                   return groupAntigravityQuotaPools(
                     providerQuota.pools.filter(hasFiniteRemaining),
-                  ).map((group) => (
-                    <div
-                      className="tray-quota-group"
-                      key={`${provider.id}:${group.key}`}
-                      aria-label={`${group.label} 额度`}
-                    >
-                      <div className="tray-quota-group-header">
-                        <strong title={group.models.join("、") || group.rawGroupName}>
-                          {group.label}
-                        </strong>
-                      </div>
-                      <div className="tray-quota-window-list">
-                        {group.pools.map(({ index, pool, windowKind, windowLabel }) => {
-                          const remaining = boundedPercent(pool.remainingPercent ?? 0);
-                          const refreshDuration = formatRefreshDuration(
-                            pool.refreshAfterSeconds ?? null,
-                          );
-                          return (
-                            <div
-                              className={`tray-quota-window-row tray-quota-window-row--${windowKind}`}
-                              key={`${provider.id}:${group.key}:${pool.name}:${index}`}
-                              aria-label={`${group.label} ${windowLabel} 额度`}
-                              title={pool.name}
-                            >
-                              <div className="tray-quota-window-header">
-                                <div className="tray-quota-window-identity">
-                                  <span className="tray-quota-window-label">{windowLabel}</span>
-                                  {refreshDuration && (
-                                    <span
-                                      className="tray-quota-duration"
-                                      aria-label={`${refreshDuration}后刷新`}
-                                    >
-                                      {refreshDuration}
-                                    </span>
-                                  )}
-                                </div>
-                                <b className="tray-quota-percent">
-                                  {formatQuotaPercent(remaining)}
-                                </b>
-                              </div>
+                  ).map((group) => {
+                    const groupKind = group.label.toLowerCase().includes("gemini")
+                      ? "gemini"
+                      : group.label.toLowerCase().includes("claude")
+                        ? "claude"
+                        : "default";
+                    return (
+                      <div
+                        className="tray-quota-group"
+                        data-group={groupKind}
+                        key={`${provider.id}:${group.key}`}
+                        aria-label={`${group.label} 额度`}
+                      >
+                        <div className="tray-quota-group-header">
+                          <strong title={group.models.join("、") || group.rawGroupName}>
+                            {group.label}
+                          </strong>
+                        </div>
+                        <div className="tray-quota-window-list">
+                          {group.pools.map(({ index, pool, windowKind, windowLabel }) => {
+                            const remaining = boundedPercent(pool.remainingPercent ?? 0);
+                            const displayedRemaining = displayQuotaPercent(remaining);
+                            const refreshDuration = formatRefreshDuration(
+                              pool.refreshAfterSeconds ?? null,
+                            );
+                            const statusClass = quotaStatusClass(displayedRemaining);
+                            return (
                               <div
-                                className="tray-quota-track tray-quota-track--window"
-                                role="progressbar"
-                                aria-label={`${group.label} ${windowLabel}剩余额度`}
-                                aria-valuemin={0}
-                                aria-valuemax={100}
-                                aria-valuenow={remaining}
+                                className={`tray-quota-window-row tray-quota-window-row--${windowKind}${statusClass}`}
+                                key={`${provider.id}:${group.key}:${pool.name}:${index}`}
+                                aria-label={`${group.label} ${windowLabel} 额度`}
+                                title={pool.name}
                               >
-                                <span style={{ width: `${remaining}%` }} />
+                                <div className="tray-quota-window-header">
+                                  <div className="tray-quota-window-identity">
+                                    <span className="tray-quota-window-label">{windowLabel}</span>
+                                    {refreshDuration && (
+                                      <span
+                                        className="tray-quota-duration"
+                                        aria-label={`${refreshDuration}后刷新`}
+                                      >
+                                        {refreshDuration}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <b className="tray-quota-percent">
+                                    {formatQuotaPercent(remaining)}
+                                  </b>
+                                </div>
+                                <div
+                                  className="tray-quota-track tray-quota-track--window"
+                                  role="progressbar"
+                                  aria-label={`${group.label} ${windowLabel}剩余额度`}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-valuenow={remaining}
+                                >
+                                  <span style={{ width: `${remaining}%` }} />
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ));
+                    );
+                  });
                 }
 
                 if (isQoder && providerQuota) {
                   const qoderPool = providerQuota.pools.find(hasFiniteRemaining);
                   if (!qoderPool) return [];
                   const remaining = boundedPercent(qoderPool.remainingPercent ?? 0);
+                  const displayedRemaining = displayQuotaPercent(remaining);
+                  const statusClass = quotaStatusClass(displayedRemaining);
                   const qoderMeta = [
                     qoderPool.used != null && qoderPool.total != null
                       ? `${qoderPool.used} / ${qoderPool.total}`
@@ -444,7 +470,8 @@ export function TrayPopover({
                   return [
                     <div
                       key={provider.id}
-                      className="tray-quota-row"
+                      className={`tray-quota-row${statusClass}`}
+                      data-provider="qoder-cn"
                       aria-label={`${provider.displayName} 额度`}
                     >
                       <div className="tray-quota-header">
