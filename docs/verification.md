@@ -34,7 +34,7 @@ The app must not access `~/.codex/auth.json` or a `chatgpt.com/backend-api` URL.
 4. Do not present browser demo data as the current local quota. Current-value
    acceptance must use the Tauri window or be checked against the latest SQLite
    snapshot; demo snapshots must remain internally consistent and clearly identified.
-5. Record evidence and remaining P3 differences in `design-qa.md`.
+5. Record evidence and remaining P3 differences in `.codex/design-qa.md`.
 
 ## Updater acceptance
 

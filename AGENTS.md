@@ -35,6 +35,6 @@ interaction.
   only when the user explicitly requests code-only work.
 - Verify the installed binary, signature, app-server child process, and affected
   real Tauri window. Capture its `CGWindowID`, inspect the screenshot, and update
-  `design-qa.md`; browser captures are not a substitute.
+  `.codex/design-qa.md`; browser captures are not a substitute.
 - Report failed build, packaging, installation, launch, process, or capture steps
   exactly. Keep local `.app` deployment separate from complete release packaging.
