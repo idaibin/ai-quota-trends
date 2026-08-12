@@ -1349,7 +1349,7 @@ select {
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 8px;
+  gap: 7px;
   overflow: hidden;
   padding: 12px;
   border-radius: inherit;
@@ -1363,17 +1363,17 @@ select {
 }
 .tray-quota-row {
   display: grid;
-  gap: 6px;
-  padding: 12px 0;
+  gap: 7px;
+  padding: 7px 0;
 }
 .tray-usage-stack > :not(:first-child) {
   border-top: 1px solid var(--tray-track);
 }
 .tray-quota-group {
   display: grid;
-  gap: 5px;
+  gap: 8px;
   min-width: 0;
-  padding: 9px 0 8px;
+  padding: 8px 0;
 }
 .tray-quota-group-header {
   display: flex;
@@ -1398,22 +1398,17 @@ select {
 }
 .tray-quota-window-list {
   display: grid;
-  gap: 4px;
+  gap: 7px;
   min-width: 0;
   padding-left: 8px;
 }
 .tray-quota-window-row {
   display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 3px 0;
-}
-.tray-quota-window-header {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
+  grid-template-columns: minmax(0, auto) minmax(40px, 1fr) 50px;
   gap: 8px;
+  min-width: 0;
+  align-items: center;
+  padding: 4px 0;
 }
 .tray-quota-window-identity {
   display: flex;
@@ -1422,7 +1417,7 @@ select {
   gap: 7px;
 }
 .tray-quota-window-label {
-  min-width: 0;
+  flex: 0 0 auto;
   overflow: hidden;
   color: var(--tray-muted);
   font-size: 11px;
@@ -1490,17 +1485,13 @@ select {
   box-shadow: 0 0 10px rgba(244, 63, 94, 0.45) !important;
 }
 .tray-quota-header {
-  display: flex;
+  display: block;
   min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 .tray-quota-identity {
-  display: flex;
+  display: grid;
   min-width: 0;
-  align-items: baseline;
-  gap: 7px;
+  gap: 5px;
 }
 .tray-quota-identity > strong {
   min-width: 0;
@@ -1526,6 +1517,13 @@ select {
   line-height: 1;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+.tray-quota-meter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 50px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 .tray-quota-meta {
   margin: 0;
@@ -1575,7 +1573,7 @@ select {
   display: grid;
   flex: 0 0 auto;
   min-height: 0;
-  gap: 8px;
+  gap: 2px;
   overflow: visible;
 }
 .tray-token-metrics {
@@ -1613,15 +1611,6 @@ select {
   justify-items: center;
   overflow: visible;
   min-width: 0;
-}
-.tray-token-range {
-  position: absolute;
-  top: 2px;
-  left: 4px;
-  color: var(--tray-muted);
-  font-size: 10px;
-  line-height: 1.1;
-  white-space: nowrap;
 }
 .tray-token-calendar {
   color: var(--tray-muted);

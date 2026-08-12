@@ -175,7 +175,6 @@ export function TokenActivityCard({
         </div>
       </dl>
       <div className="tray-token-heatmap" role="img" aria-label={rangeSummary}>
-        <span className="tray-token-range">最近 90 天</span>
         <ActivityCalendar
           className="tray-token-calendar"
           colorScheme="dark"

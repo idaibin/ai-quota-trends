@@ -324,6 +324,11 @@ describe("tray quota overview", () => {
     expect(markup.match(/tray-quota-row/g)).toHaveLength(2);
     expect(markup.match(/tray-quota-group/g)).toHaveLength(4);
     expect(markup.match(/tray-quota-window-row /g)).toHaveLength(4);
+    expect(markup.match(/tray-quota-meter/g)).toHaveLength(2);
+    expect(markup).toMatch(/tray-quota-meter[\s\S]*?tray-quota-track[\s\S]*?tray-quota-percent/);
+    expect(markup).toMatch(
+      /tray-quota-window-row tray-quota-window-row--weekly[\s\S]*?tray-quota-window-label[\s\S]*?tray-quota-duration[\s\S]*?tray-quota-track tray-quota-track--window[\s\S]*?tray-quota-percent/,
+    );
     expect(markup).toContain("Codex");
     expect(markup).not.toContain('aria-label="ZCode 额度"');
     expect(markup).toContain("Qoder 国内版");

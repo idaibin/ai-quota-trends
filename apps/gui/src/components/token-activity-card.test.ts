@@ -135,7 +135,7 @@ describe("token activity heatmap", () => {
 
     expect(markup).toContain("今日 Token");
     expect(markup).toContain("5.11亿");
-    expect(markup).toContain("最近 90 天");
+    expect(markup).not.toContain("最近 90 天");
     expect(markup).not.toContain(">会话<");
     expect(markup).not.toContain(">调用<");
     expect(markup).not.toContain(">Token 活动<");

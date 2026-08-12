@@ -365,17 +365,19 @@ export function TrayPopover({
                             </span>
                           ) : null}
                         </div>
-                        <b className="tray-quota-percent">{displayedRemainingPercent}%</b>
                       </div>
-                      <div
-                        className="tray-quota-track"
-                        role="progressbar"
-                        aria-label="Codex 剩余额度"
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={remainingPercent ?? 0}
-                      >
-                        <span style={{ width: `${remainingPercent ?? 0}%` }} />
+                      <div className="tray-quota-meter">
+                        <div
+                          className="tray-quota-track"
+                          role="progressbar"
+                          aria-label="Codex 剩余额度"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={remainingPercent ?? 0}
+                        >
+                          <span style={{ width: `${remainingPercent ?? 0}%` }} />
+                        </div>
+                        <b className="tray-quota-percent">{displayedRemainingPercent}%</b>
                       </div>
                     </div>,
                   ];
@@ -417,21 +419,16 @@ export function TrayPopover({
                                 aria-label={`${group.label} ${windowLabel} 额度`}
                                 title={pool.name}
                               >
-                                <div className="tray-quota-window-header">
-                                  <div className="tray-quota-window-identity">
-                                    <span className="tray-quota-window-label">{windowLabel}</span>
-                                    {refreshDuration && (
-                                      <span
-                                        className="tray-quota-duration"
-                                        aria-label={`${refreshDuration}后刷新`}
-                                      >
-                                        {refreshDuration}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <b className="tray-quota-percent">
-                                    {formatQuotaPercent(remaining)}
-                                  </b>
+                                <div className="tray-quota-window-identity">
+                                  <span className="tray-quota-window-label">{windowLabel}</span>
+                                  {refreshDuration && (
+                                    <span
+                                      className="tray-quota-duration"
+                                      aria-label={`${refreshDuration}后刷新`}
+                                    >
+                                      {refreshDuration}
+                                    </span>
+                                  )}
                                 </div>
                                 <div
                                   className="tray-quota-track tray-quota-track--window"
@@ -443,6 +440,9 @@ export function TrayPopover({
                                 >
                                   <span style={{ width: `${remaining}%` }} />
                                 </div>
+                                <b className="tray-quota-percent">
+                                  {formatQuotaPercent(remaining)}
+                                </b>
                               </div>
                             );
                           })}
@@ -478,19 +478,21 @@ export function TrayPopover({
                         <div className="tray-quota-identity">
                           <strong>{provider.displayName}</strong>
                         </div>
-                        <b className="tray-quota-percent">{formatQuotaPercent(remaining)}</b>
-                      </div>
-                      <div
-                        className="tray-quota-track"
-                        role="progressbar"
-                        aria-label={`${provider.displayName} 剩余额度`}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={remaining}
-                      >
-                        <span style={{ width: `${remaining}%` }} />
                       </div>
                       {qoderMeta && <p className="tray-quota-meta">{qoderMeta}</p>}
+                      <div className="tray-quota-meter">
+                        <div
+                          className="tray-quota-track"
+                          role="progressbar"
+                          aria-label={`${provider.displayName} 剩余额度`}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={remaining}
+                        >
+                          <span style={{ width: `${remaining}%` }} />
+                        </div>
+                        <b className="tray-quota-percent">{formatQuotaPercent(remaining)}</b>
+                      </div>
                     </div>,
                   ];
                 }
