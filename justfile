@@ -9,14 +9,14 @@ dev:
 dev-gui:
   cd apps/gui && npm run tauri dev
 
-poc-once output="/private/tmp/codex-quota-trends-poc.jsonl":
-  cargo run -p codex-quota-core --bin codex-quota-poc -- once --output {{output}}
+poc-once output="/private/tmp/ai-quota-trends-poc.jsonl":
+  cargo run -p ai-quota-core --bin ai-quota-poc -- once --output {{output}}
 
-poc-monitor output="/private/tmp/codex-quota-trends-poc.jsonl":
-  cargo run -p codex-quota-core --bin codex-quota-poc -- monitor --output {{output}}
+poc-monitor output="/private/tmp/ai-quota-trends-poc.jsonl":
+  cargo run -p ai-quota-core --bin ai-quota-poc -- monitor --output {{output}}
 
-poc-report input="/private/tmp/codex-quota-trends-poc.jsonl":
-  cargo run -p codex-quota-core --bin codex-quota-poc -- report --input {{input}}
+poc-report input="/private/tmp/ai-quota-trends-poc.jsonl":
+  cargo run -p ai-quota-core --bin ai-quota-poc -- report --input {{input}}
 
 fmt:
   cargo fmt --all -- --check

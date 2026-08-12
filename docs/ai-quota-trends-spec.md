@@ -11,26 +11,26 @@
 保存建议：
 
 ```text
-docs/codex-quota-trends-spec.md
+docs/ai-quota-trends-spec.md
 ```
 
 ````markdown
-# Agent Quota Trends 产品与实施规格
+# AI Quota Trends 产品与实施规格
 
 ## 1. 项目概述
 
 项目名称：
 
-Agent Quota Trends
+AI Quota Trends
 
 仓库：
 
-codex-quota-trends
+ai-quota-trends
 
 
 ## 1.1 产品定位
 
-Agent Quota Trends 是一个 macOS 本地优先（Local-first）的 AI 编程工具用量观察器。当前持续采集 Codex 额度与 Token 活动，只读汇总 ZCode 本地 Token 记录，并通过已安装 CLI 的额度界面读取 Qoder 国内版和 Antigravity 当前额度。
+AI Quota Trends 是一个 macOS 本地优先（Local-first）的多 AI 服务额度与 Token 使用仪表盘。当前持续采集 Codex 额度与 Token 活动，只读汇总 ZCode 本地 Token 记录，并通过已安装 CLI 的额度界面读取 Qoder 国内版和 Antigravity 当前额度。
 
 菜单栏标题仍固定使用 Codex 额度。弹出窗一次完整展示所有已启用工具，不提供切换器；Codex 展示持久化额度窗口，Qoder 国内版展示套餐与 Credit，Antigravity 展示两个共享模型池。ZCode 当前只展示已接入 Token 明细，不虚构账户额度。弹出窗不展示 Codex 趋势图。
 
@@ -184,7 +184,7 @@ Charts：
 
 
 ```text
-codex-quota-trends
+ai-quota-trends
 
 ├── src/
 │
@@ -931,7 +931,7 @@ release/v1
 
 构建一个：
 
-> 本地优先、低资源占用、macOS 原生体验的 Agent Quota Trends 用量观察器。
+> 本地优先、低资源占用、macOS 原生体验的 AI Quota Trends 用量观察器。
 
 核心指标：
 

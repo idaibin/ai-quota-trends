@@ -8,12 +8,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{Context, Result, anyhow, bail};
-use chrono::Utc;
-use codex_quota_core::{
+use ai_quota_core::{
     EvidenceRecord, ObservationStatus, build_error_record, build_evidence_record, build_report,
     codex::AppServerClient,
 };
+use anyhow::{Context, Result, anyhow, bail};
+use chrono::Utc;
 
 const DEFAULT_INTERVAL_SECONDS: u64 = 15 * 60;
 const DEFAULT_DURATION_HOURS: u64 = 7 * 24;
@@ -214,9 +214,9 @@ fn print_help() {
     println!(
         "Codex quota acquisition feasibility PoC\n\n\
 Usage:\n\
-  codex-quota-poc once --output PATH\n\
-  codex-quota-poc monitor --output PATH [--interval-seconds 900] [--duration-hours 168]\n\
-  codex-quota-poc report --input PATH [--stale-after-seconds 1800]\n\n\
+  ai-quota-poc once --output PATH\n\
+  ai-quota-poc monitor --output PATH [--interval-seconds 900] [--duration-hours 168]\n\
+  ai-quota-poc report --input PATH [--stale-after-seconds 1800]\n\n\
 The evidence file is local JSONL created with mode 0600. Raw app-server payloads are\n\
 stored alongside normalized observations; opaque reset-credit IDs are redacted."
     );

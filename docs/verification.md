@@ -25,6 +25,20 @@ With Codex authenticated, start the Tauri app and confirm:
 
 The app must not access `~/.codex/auth.json` or a `chatgpt.com/backend-api` URL.
 
+## Product identity migration
+
+1. Start from an existing
+   `~/Library/Application Support/dev.idaibin.codex-quota-trends/` data directory.
+2. Launch `/Applications/AI Quota Trends.app` and verify the legacy directory has
+   moved to `dev.idaibin.ai-quota-trends` before the database opens.
+3. Compare SQLite row counts and settings before and after launch, including
+   `launchAtLogin`; verify the new `AI Quota Trends.plist` points at the new app and
+   obsolete product launch agents are absent.
+4. Verify the legacy Bundle ID preferences plist moved to
+   `dev.idaibin.ai-quota-trends.plist` without overwriting a pre-existing current file.
+5. Verify the installed bundle identifier is `dev.idaibin.ai-quota-trends`, its
+   executable is `ai-quota-trends`, and no old application process remains.
+
 ## Visual acceptance
 
 1. Capture the 420×170 tray popover with deterministic data.

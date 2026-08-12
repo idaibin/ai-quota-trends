@@ -147,10 +147,10 @@ export default function App() {
       applyRoute((event as CustomEvent<unknown>).detail);
     };
     window.addEventListener("storage", handleStorage);
-    window.addEventListener("cqt-route-requested", handleRouteRequest);
+    window.addEventListener("aqt-route-requested", handleRouteRequest);
     return () => {
       window.removeEventListener("storage", handleStorage);
-      window.removeEventListener("cqt-route-requested", handleRouteRequest);
+      window.removeEventListener("aqt-route-requested", handleRouteRequest);
     };
   }, []);
 

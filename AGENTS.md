@@ -1,4 +1,4 @@
-# Agent Quota Trends Agent Guide
+# AI Quota Trends Agent Guide
 
 ## Scope
 
@@ -15,7 +15,7 @@ interaction.
 
 ## Boundaries
 
-- `crates/codex-quota-core` owns app-server communication, quota analysis,
+- `crates/ai-quota-core` owns app-server communication, quota analysis,
   alerts, and SQLite.
 - `apps/gui/src-tauri` owns Tauri commands, tray/window lifecycle, and native
   integration.
@@ -31,7 +31,7 @@ interaction.
 - `just test`
 - `just build-gui`
 - UI changes default to building, backing up and replacing
-  `/Applications/Agent Quota Trends.app`, then restarting it. Skip installation
+  `/Applications/AI Quota Trends.app`, then restarting it. Skip installation
   only when the user explicitly requests code-only work.
 - Verify the installed binary, signature, app-server child process, and affected
   real Tauri window. Capture its `CGWindowID`, inspect the screenshot, and update

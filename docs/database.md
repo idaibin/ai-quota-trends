@@ -3,6 +3,18 @@
 SQLite is the only persistent store. Migrations run transactionally when the
 application opens the database.
 
+The current Tauri identifier stores this database under
+`~/Library/Application Support/dev.idaibin.ai-quota-trends/`. On the first launch
+after the product rename, if that directory does not exist and the previous
+`dev.idaibin.codex-quota-trends` directory does, the complete legacy directory is
+renamed atomically before SQLite opens. This preserves the database, WAL/SHM files,
+exports, settings, and history without merging or overwriting an existing current
+directory.
+
+The same first-run compatibility step moves the old Bundle ID preferences plist
+to `dev.idaibin.ai-quota-trends.plist` only when the new plist does not exist, so
+the macOS status-item position is retained without overwriting current preferences.
+
 ## Tables
 
 `quota_snapshots` stores one row whenever a window's displayed integer percentage

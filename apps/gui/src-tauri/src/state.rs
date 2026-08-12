@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use codex_quota_core::{Database, SharedCollectorState};
+use ai_quota_core::{Database, SharedCollectorState};
 use tokio::sync::Notify;
 
 pub struct AppState {

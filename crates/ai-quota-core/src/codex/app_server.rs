@@ -62,7 +62,7 @@ impl AppServerClient {
 
     async fn initialize(&mut self) -> Result<(), AppServerError> {
         self.request("initialize", json!({
-            "clientInfo": { "name": "agent_quota_trends", "title": "Agent Quota Trends", "version": env!("CARGO_PKG_VERSION") },
+            "clientInfo": { "name": "ai_quota_trends", "title": "AI Quota Trends", "version": env!("CARGO_PKG_VERSION") },
             "capabilities": { "experimentalApi": true }
         })).await?;
         self.send(json!({ "method": "initialized", "params": {} })).await

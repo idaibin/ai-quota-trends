@@ -1,7 +1,8 @@
-# Agent Quota Trends
+# AI Quota Trends
 
-Agent Quota Trends is a local-first observer for AI coding agents. Codex quota
-and model-level token activity are collected today; ZCode contributes model-level
+AI Quota Trends is a local-first quota and Token usage dashboard for AI services
+and coding agents. Codex quota and model-level token activity are collected today;
+ZCode contributes model-level
 token activity from its read-only local SQLite history. The unified heatmap uses
 completed-request total Tokens, while input/cache figures remain diagnostic fields.
 Qoder CN and Antigravity quota is read on demand from their installed CLI usage
@@ -67,7 +68,7 @@ Architecture, database, design, and verification details live in [`docs`](docs).
 
 The Settings titlebar exposes the installed version and a compact update action.
 Production builds use Tauri's signed updater with the single endpoint
-`https://github.com/idaibin/codex-quota-trends/releases/latest/download/latest.json`.
+`https://github.com/idaibin/ai-quota-trends/releases/latest/download/latest.json`.
 
 Build every release locally; GitHub Actions is not part of the release path.
 
@@ -85,7 +86,10 @@ Build every release locally; GitHub Actions is not part of the release path.
    just release-gui
    ```
 
-The command reads the project key and password from `~/.codex/secrets`, creates
+The command reads the project key and password from `~/.codex/secrets`. The new
+`ai-quota-trends-updater.*` names are preferred, while the previous
+`codex-quota-trends-updater.*` files remain a read-only compatibility source so an
+existing signing identity is not lost during the repository rename. It creates
 the app, DMG, updater archive, signature, and `latest.json` under
 `target/universal-apple-darwin/release/bundle`, and never uploads them.
 

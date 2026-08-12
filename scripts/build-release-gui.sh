@@ -3,8 +3,20 @@
 set -euo pipefail
 
 root_dir="${0:A:h:h}"
-key_path="${TAURI_SIGNING_PRIVATE_KEY_FILE:-$HOME/.codex/secrets/codex-quota-trends-updater.key}"
-password_path="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD_FILE:-$HOME/.codex/secrets/codex-quota-trends-updater.password}"
+default_key_path="$HOME/.codex/secrets/ai-quota-trends-updater.key"
+default_password_path="$HOME/.codex/secrets/ai-quota-trends-updater.password"
+legacy_key_path="$HOME/.codex/secrets/codex-quota-trends-updater.key"
+legacy_password_path="$HOME/.codex/secrets/codex-quota-trends-updater.password"
+
+if [[ ! -e "$default_key_path" && -r "$legacy_key_path" ]]; then
+  default_key_path="$legacy_key_path"
+fi
+if [[ ! -e "$default_password_path" && -r "$legacy_password_path" ]]; then
+  default_password_path="$legacy_password_path"
+fi
+
+key_path="${TAURI_SIGNING_PRIVATE_KEY_FILE:-$default_key_path}"
+password_path="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD_FILE:-$default_password_path}"
 
 if [[ ! -r "$key_path" || ! -r "$password_path" ]]; then
   print -u2 "Missing updater signing key or password file."
@@ -24,7 +36,7 @@ if [[ "$version" != "$package_version" || "$version" != "$workspace_version" ]];
 fi
 
 bundle_dir="$root_dir/target/universal-apple-darwin/release/bundle"
-archive="$bundle_dir/macos/Agent Quota Trends.app.tar.gz"
+archive="$bundle_dir/macos/AI Quota Trends.app.tar.gz"
 signature="$archive.sig"
 manifest="$bundle_dir/macos/latest.json"
 
@@ -41,8 +53,8 @@ cd "$root_dir"
 node scripts/generate-update-manifest.mjs "$version" "$archive" "$signature" "$manifest"
 
 print "Local release artifacts:"
-print "  $bundle_dir/macos/Agent Quota Trends.app"
+print "  $bundle_dir/macos/AI Quota Trends.app"
 print "  $archive"
 print "  $signature"
-print "  $bundle_dir/dmg/Agent Quota Trends_${version}_universal.dmg"
+print "  $bundle_dir/dmg/AI Quota Trends_${version}_universal.dmg"
 print "  $manifest"

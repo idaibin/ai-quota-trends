@@ -12,12 +12,12 @@ if (!version || !archivePath || !signaturePath || !outputPath) {
 const signature = (await readFile(signaturePath, "utf8")).trim();
 const baseUrl =
   process.env.UPDATE_DOWNLOAD_BASE_URL ??
-  `https://github.com/idaibin/codex-quota-trends/releases/download/v${version}`;
+  `https://github.com/idaibin/ai-quota-trends/releases/download/v${version}`;
 const archiveUrl = `${baseUrl.replace(/\/$/, "")}/${encodeURIComponent(basename(archivePath))}`;
 
 const manifest = {
   version,
-  notes: process.env.UPDATE_NOTES ?? `Agent Quota Trends ${version}`,
+  notes: process.env.UPDATE_NOTES ?? `AI Quota Trends ${version}`,
   pub_date: new Date().toISOString(),
   platforms: {
     "darwin-universal": {

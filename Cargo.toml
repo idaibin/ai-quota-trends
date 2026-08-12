@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "apps/gui/src-tauri",
-  "crates/codex-quota-core",
+  "crates/ai-quota-core",
 ]
 resolver = "3"
 
@@ -10,7 +10,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.94"
 license = "Apache-2.0"
-repository = "https://github.com/idaibin/codex-quota-trends"
+repository = "https://github.com/idaibin/ai-quota-trends"
 
 [workspace.dependencies]
 anyhow = "1"

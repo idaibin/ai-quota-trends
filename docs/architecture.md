@@ -10,7 +10,7 @@ until this gate passes. See `feasibility-poc.md`.
 
 ## Shape
 
-Agent Quota Trends is a Client/Tauri repository.
+AI Quota Trends is a multi-provider quota and Token usage Client/Tauri repository.
 
 The provider catalog is deliberately fixed. Codex owns the persistent quota collector.
 ZCode contributes read-only model-level Token activity from its local usage database.
@@ -22,7 +22,7 @@ snapshots. This is not a plugin system.
 ```text
 apps/gui/src         React presentation and interaction
 apps/gui/src-tauri   Tauri commands, tray, and window lifecycle
-crates/codex-quota-core
+crates/ai-quota-core
   codex              app-server JSONL process and protocol normalization
   quota              domain model, trend calculations, alert detection
   token_usage        local session-log metadata aggregation

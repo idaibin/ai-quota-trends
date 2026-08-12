@@ -1,5 +1,21 @@
 # Design QA
 
+## AI Quota Trends product identity migration — 2026-08-12
+
+- Product identity changed to `AI Quota Trends`; installed bundle identifier is `dev.idaibin.ai-quota-trends` and executable is `ai-quota-trends`.
+- Existing application data, settings, and macOS status-item preference migrated without count/value drift from `dev.idaibin.codex-quota-trends` to `dev.idaibin.ai-quota-trends`; launch-at-login now targets the renamed app.
+- Native evidence: `.codex/artifacts/native-qa-20260812-product-rename/tray-ai-quota-trends-final.png`, installed PID `91671`, app-server child PID `91684`, `CGWindowID 48838`, 338×577 points / 676×1154 pixels, SHA-256 `1a405973d0ee87ba1853001d3bb83b9226e74c116026b8160648a7951711479c`.
+- Detailed migration evidence: `.codex/artifacts/product-rename-migration-20260812.md`. The full tray remains visible without clipping after the identity and data-directory migration.
+
+## Combined right-aligned meter layout — 2026-08-12
+
+- User-approved source: `/Users/daibin/.codex/generated_images/019ff3f3-b5c5-78f3-900e-1bbd9c3e94a9/exec-2cdc1332-e502-4307-8b1f-841e55ef97ee.png`.
+- Codex and Qoder now keep supporting copy above a meter row; the progress track and fixed-width percentage share one baseline. Gemini and Claude 与 GPT window rows keep label, refresh duration, track, and percentage on one compact line.
+- The visible `最近 90 天` label is removed; the 90-day accessible summary and structured detail list remain intact.
+- Native pass 1: `.codex/artifacts/native-qa-20260812-meter-layout/tray-meter-pass1.png`, 338×611 points. Its P2 vertical-rhythm mismatch was corrected by reducing only row/group spacing.
+- Native pass 2: `.codex/artifacts/native-qa-20260812-meter-layout/tray-meter-pass2.png`, installed PID `73498`, app-server child PID `73509`, `CGWindowID 48569`, 338×577 points / 676×1154 pixels, SHA-256 `60577a3d098416d4ae71a8ef3b2cb92108c555cd852a49fbb622a1a49c354426`.
+- Same-viewport final comparison: `.codex/artifacts/native-qa-20260812-meter-layout/comparison-pass2.png`. No actionable P0/P1/P2 findings remain. Detailed review: `.codex/artifacts/qa-20260812-143903.md`.
+
 ## Tray Popover Color Optimization — 2026-08-12
 
 - Scope: Resolve severe color homogenization in the macOS menu bar tray popover where all provider bars and text metrics previously rendered in a uniform violet tone.

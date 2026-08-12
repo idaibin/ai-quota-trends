@@ -1,11 +1,11 @@
 use std::{collections::BTreeMap, fs, process::Command};
 
-use chrono::{Duration, Local, Utc};
-use codex_quota_core::{
+use ai_quota_core::{
     ActivityEvent, AlertRecord, AppSettings, CollectorState, Database, DatabaseCleanupResult,
     DatabaseStats, Pace, ProviderId, ProviderProbe, ProviderQuota, QuotaSnapshot, TokenActivity,
     TrendPoint, UsageSpeeds, calculate_consumed, calculate_pace, calculate_speeds,
 };
+use chrono::{Duration, Local, Utc};
 use serde::Serialize;
 use tauri::{AppHandle, State};
 use tauri_plugin_autostart::ManagerExt;
@@ -128,7 +128,7 @@ fn dashboard(state: &AppState) -> Result<DashboardData, String> {
     let pace = snapshot.windows.first().map(|window| calculate_pace(window, now)).unwrap_or(Pace {
         time_progress: 0.0,
         usage_progress: 0.0,
-        status: codex_quota_core::PaceStatus::Normal,
+        status: ai_quota_core::PaceStatus::Normal,
     });
     let collector = state
         .collector_state
@@ -146,8 +146,8 @@ fn dashboard(state: &AppState) -> Result<DashboardData, String> {
         .map_err(|error| error.to_string())?;
     drop(database);
     let mut additional_models = Vec::new();
-    if enabled_provider_ids.contains(&codex_quota_core::ProviderId::Zcode)
-        && let Ok(zcode_models) = codex_quota_core::read_zcode_model_activity(
+    if enabled_provider_ids.contains(&ai_quota_core::ProviderId::Zcode)
+        && let Ok(zcode_models) = ai_quota_core::read_zcode_model_activity(
             &today.format("%Y-%m-%d").to_string(),
             &(today - Duration::days(89)).format("%Y-%m-%d").to_string(),
         )
@@ -174,7 +174,7 @@ fn dashboard(state: &AppState) -> Result<DashboardData, String> {
 #[cfg(test)]
 mod tests {
     use super::{build_usage_heatmap, enabled_quota_probes, settings_side_effects};
-    use codex_quota_core::{
+    use ai_quota_core::{
         AppSettings, Database, ProviderId, ProviderProbe, ProviderProbeStatus, TrendPoint,
     };
 
@@ -249,7 +249,7 @@ mod tests {
         let probes = [probe(ProviderId::Codex, false), probe(ProviderId::Zcode, false)];
         let selected = enabled_quota_probes(&probes, &[ProviderId::Codex, ProviderId::Zcode]);
 
-        assert!(codex_quota_core::read_provider_quotas(&selected).is_empty());
+        assert!(ai_quota_core::read_provider_quotas(&selected).is_empty());
     }
 
     #[test]
@@ -315,7 +315,7 @@ pub fn list_providers(state: State<'_, AppState>) -> Result<Vec<ProviderProbe>, 
         let database = state.database.lock().map_err(|_| "database lock poisoned".to_owned())?;
         provider_probe_inputs(&database)?.0
     };
-    Ok(codex_quota_core::probe_providers_with_codex_path(&codex_path))
+    Ok(ai_quota_core::probe_providers_with_codex_path(&codex_path))
 }
 
 #[tauri::command]
@@ -328,9 +328,9 @@ pub async fn list_provider_quotas(
         (enabled_provider_ids, codex_path)
     };
     tauri::async_runtime::spawn_blocking(move || {
-        let probes = codex_quota_core::probe_providers_with_codex_path(&codex_path);
+        let probes = ai_quota_core::probe_providers_with_codex_path(&codex_path);
         let probes = enabled_quota_probes(&probes, &enabled_provider_ids);
-        codex_quota_core::read_provider_quotas(&probes)
+        ai_quota_core::read_provider_quotas(&probes)
     })
     .await
     .map_err(|error| format!("provider quota task failed: {error}"))
@@ -374,7 +374,7 @@ pub fn export_data(state: State<'_, AppState>) -> Result<Option<String>, String>
     let export_dir = state.data_dir.join("exports");
     fs::create_dir_all(&export_dir).map_err(|error| error.to_string())?;
     let path =
-        export_dir.join(format!("agent-quota-trends-{}.csv", Utc::now().format("%Y%m%d-%H%M%S")));
+        export_dir.join(format!("ai-quota-trends-{}.csv", Utc::now().format("%Y%m%d-%H%M%S")));
     fs::write(&path, csv).map_err(|error| error.to_string())?;
     Ok(Some(path.to_string_lossy().into_owned()))
 }
