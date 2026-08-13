@@ -7,10 +7,14 @@ import {
   TOKEN_HEATMAP_BLOCK_MARGIN,
   TOKEN_HEATMAP_BLOCK_SIZE,
   TOKEN_HEATMAP_COLORS,
+  TOKEN_HEATMAP_COLORS_LIGHT,
+  TokenTooltipContent,
   buildTokenHeatmap,
   formatTokenCount,
+  formatTokenCountParts,
   formatTokenTooltip,
   tokenHeatLevel,
+  tokenTooltipColor,
   tokenTooltipDetails,
 } from "./token-activity-card";
 
@@ -94,9 +98,17 @@ describe("token activity heatmap", () => {
     expect(tokenHeatLevel(10_000, 10_000)).toBe(4);
   });
 
-  it("uses five ordered purple heatmap levels on the fixed dark HUD", () => {
-    expect(TOKEN_HEATMAP_COLORS).toEqual(["#2a2540", "#493b6c", "#644e91", "#8064b6", "#ab8bdd"]);
+  it("uses ordered purple heatmap levels in both tray appearances", () => {
+    expect(TOKEN_HEATMAP_COLORS).toEqual(["#2a2540", "#4b3270", "#69469a", "#895cc6", "#b47eea"]);
     expect(new Set(TOKEN_HEATMAP_COLORS)).toHaveLength(5);
+    expect(TOKEN_HEATMAP_COLORS_LIGHT).toEqual([
+      "#eee8f8",
+      "#ddcef4",
+      "#c2a9ea",
+      "#9c75dc",
+      "#713bc5",
+    ]);
+    expect(new Set(TOKEN_HEATMAP_COLORS_LIGHT)).toHaveLength(5);
     expect(
       TOKEN_HEATMAP_COLORS.every((color) => {
         const red = Number.parseInt(color.slice(1, 3), 16);
@@ -111,10 +123,50 @@ describe("token activity heatmap", () => {
     expect(blueChannels).toEqual([...blueChannels].sort((left, right) => left - right));
   });
 
+  it("maps tooltip values onto a readable ordered purple scale", () => {
+    expect(tokenTooltipColor(1_526_000_000, 1_526_000_000)).toBe("#cf9cff");
+    expect(tokenTooltipColor(38_950_000, 1_526_000_000)).toBe("#9b82c9");
+    expect(tokenTooltipColor(1_526_000_000, 1_526_000_000, "light")).toBe("#47178f");
+    expect(tokenTooltipColor(38_950_000, 1_526_000_000, "light")).toBe("#7440ba");
+  });
+
+  it("makes the larger dark-tooltip value more prominent without washing it toward white", () => {
+    const maximum = 170_000_000;
+
+    expect(tokenHeatLevel(maximum, maximum)).toBe(4);
+    expect(tokenHeatLevel(3_286_000, maximum)).toBe(1);
+    expect(tokenTooltipColor(maximum, maximum)).toBe("#cf9cff");
+    expect(tokenTooltipColor(3_286_000, maximum)).toBe("#9b82c9");
+  });
+
   it("formats large token totals compactly in Chinese units", () => {
     expect(formatTokenCount(398_334_882)).toBe("3.98亿");
     expect(formatTokenCount(17_056_934)).toBe("1706万");
     expect(formatTokenCount(9_876)).toBe("9,876");
+    expect(formatTokenCountParts(1_526_000_000)).toEqual({ value: "15.26", unit: "亿" });
+    expect(formatTokenCountParts(38_950_000)).toEqual({ value: "3895", unit: "万" });
+    expect(formatTokenCountParts(9_876)).toEqual({ value: "9,876", unit: "" });
+  });
+
+  it("separates tooltip date, provider, numeric value, and right-aligned unit", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TokenTooltipContent, {
+        details: {
+          date: "8月11日",
+          providers: [
+            { providerId: "codex", name: "Codex", tokens: 1_526_000_000 },
+            { providerId: "zcode", name: "ZCode", tokens: 38_950_000 },
+          ],
+        },
+      }),
+    );
+
+    expect(markup).toMatch(
+      /tray-token-tooltip-date[\s\S]*?8月11日[\s\S]*?data-provider="codex" data-token-level="4"[\s\S]*?--tray-token-tooltip-value:#cf9cff[\s\S]*?tray-token-tooltip-model[\s\S]*?Codex[\s\S]*?tray-token-tooltip-value[\s\S]*?15\.26[\s\S]*?tray-token-tooltip-unit[\s\S]*?亿/,
+    );
+    expect(markup).toMatch(
+      /data-provider="zcode" data-token-level="1"[\s\S]*?--tray-token-tooltip-value:#9b82c9[\s\S]*?tray-token-tooltip-model[\s\S]*?ZCode[\s\S]*?tray-token-tooltip-value[\s\S]*?3895[\s\S]*?tray-token-tooltip-unit[\s\S]*?万/,
+    );
   });
 
   it("uses completed-request total Tokens and reconciles provider totals", () => {
@@ -133,8 +185,11 @@ describe("token activity heatmap", () => {
     };
     const markup = renderToStaticMarkup(createElement(TokenActivityCard, { activity }));
 
-    expect(markup).toContain("今日 Token");
+    expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token</dt>');
     expect(markup).toContain("5.11亿");
+    expect(markup).toMatch(
+      /tray-token-heatmap[\s\S]*?tray-token-metrics[\s\S]*?5\.11亿[\s\S]*?tray-token-calendar/,
+    );
     expect(markup).not.toContain("最近 90 天");
     expect(markup).not.toContain(">会话<");
     expect(markup).not.toContain(">调用<");

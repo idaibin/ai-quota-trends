@@ -37,6 +37,9 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [windowLabel, setWindowLabel] = useState(startsAsTray ? "tray" : "main");
+  const [systemPrefersDark, setSystemPrefersDark] = useState(
+    () => window.matchMedia("(prefers-color-scheme: dark)").matches,
+  );
   const providerQuotasLoadedRef = useRef(false);
   const providerQuotaRequestRef = useRef(false);
   const settingsReady = settings !== null;
@@ -154,14 +157,18 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (event: MediaQueryListEvent) => setSystemPrefersDark(event.matches);
+    setSystemPrefersDark(media.matches);
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, []);
+
   const resolvedTheme = useMemo<Exclude<ThemeMode, "system">>(() => {
     const mode = settings?.theme ?? "system";
-    return mode === "system"
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light"
-      : mode;
-  }, [settings?.theme]);
+    return mode === "system" ? (systemPrefersDark ? "dark" : "light") : mode;
+  }, [settings?.theme, systemPrefersDark]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
@@ -202,6 +209,7 @@ export default function App() {
         providers={providers}
         providerQuotas={providerQuotas}
         providerQuotasLoading={providerQuotasLoading}
+        appearance={resolvedTheme}
       />
     );
 

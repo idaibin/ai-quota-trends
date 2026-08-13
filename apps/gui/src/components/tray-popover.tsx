@@ -56,15 +56,24 @@ const providerFallbacks: ProviderProbe[] = [
 ];
 const PROVIDER_ORDER: ProviderId[] = ["codex", "zcode", "qoder-cn", "antigravity"];
 
-export const formatResetCountdown = (resetAt: number | null, now: number) => {
-  if (!resetAt) return "待更新";
-  const totalMinutes = Math.max(0, Math.ceil((resetAt - now) / 60));
+const formatCompactDuration = (totalMinutes: number) => {
+  if (totalMinutes >= 24 * 60) {
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    return hours > 0 ? `${days}天${hours}小时` : `${days}天`;
+  }
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   const parts = [];
   if (hours > 0) parts.push(`${hours}小时`);
   parts.push(`${minutes}分`);
   return parts.join("");
+};
+
+export const formatResetCountdown = (resetAt: number | null, now: number) => {
+  if (!resetAt) return "待更新";
+  const totalMinutes = Math.max(0, Math.ceil((resetAt - now) / 60));
+  return formatCompactDuration(totalMinutes);
 };
 
 export const formatQuotaPercent = (remainingPercent: number | null) => {
@@ -88,10 +97,7 @@ const quotaStatusClass = (displayedRemainingPercent: number) =>
 export const formatRefreshDuration = (seconds: number | null) => {
   if (seconds == null) return null;
   const totalMinutes = Math.max(0, Math.floor(seconds / 60));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes}分`;
-  return `${hours}小时${minutes}分`;
+  return formatCompactDuration(totalMinutes);
 };
 
 export const formatQuotaPoolName = (providerId: string, name: string) => {
@@ -113,8 +119,8 @@ type AntigravityWindowKind = "weekly" | "five-hour" | "unknown";
 
 const formatAntigravityGroupName = (name: string) => {
   const normalized = name.trim().toUpperCase();
-  if (normalized === "GEMINI MODELS") return "Gemini";
-  if (normalized === "CLAUDE AND GPT MODELS") return "Claude 与 GPT";
+  if (normalized === "GEMINI MODELS") return "AGY · Google";
+  if (normalized === "CLAUDE AND GPT MODELS") return "AGY · Claude";
   const withoutModels = name
     .trim()
     .replace(/\s+MODELS$/i, "")
@@ -256,12 +262,14 @@ export function TrayPopover({
   providers,
   providerQuotas = [],
   providerQuotasLoading = false,
+  appearance = "dark",
 }: {
   data: DashboardData;
   settings: AppSettings;
   providers: ProviderProbe[];
   providerQuotas?: ProviderQuota[];
   providerQuotasLoading?: boolean;
+  appearance?: "light" | "dark";
 }) {
   const quotaWindow = data.snapshot.windows[0];
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1_000));
@@ -387,9 +395,9 @@ export function TrayPopover({
                   return groupAntigravityQuotaPools(
                     providerQuota.pools.filter(hasFiniteRemaining),
                   ).map((group) => {
-                    const groupKind = group.label.toLowerCase().includes("gemini")
+                    const groupKind = group.rawGroupName.toLowerCase().includes("gemini")
                       ? "gemini"
-                      : group.label.toLowerCase().includes("claude")
+                      : group.rawGroupName.toLowerCase().includes("claude")
                         ? "claude"
                         : "default";
                     return (
@@ -430,19 +438,21 @@ export function TrayPopover({
                                     </span>
                                   )}
                                 </div>
-                                <div
-                                  className="tray-quota-track tray-quota-track--window"
-                                  role="progressbar"
-                                  aria-label={`${group.label} ${windowLabel}剩余额度`}
-                                  aria-valuemin={0}
-                                  aria-valuemax={100}
-                                  aria-valuenow={remaining}
-                                >
-                                  <span style={{ width: `${remaining}%` }} />
+                                <div className="tray-quota-meter tray-quota-meter--window">
+                                  <div
+                                    className="tray-quota-track tray-quota-track--window"
+                                    role="progressbar"
+                                    aria-label={`${group.label} ${windowLabel}剩余额度`}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    aria-valuenow={remaining}
+                                  >
+                                    <span style={{ width: `${remaining}%` }} />
+                                  </div>
+                                  <b className="tray-quota-percent">
+                                    {formatQuotaPercent(remaining)}
+                                  </b>
                                 </div>
-                                <b className="tray-quota-percent">
-                                  {formatQuotaPercent(remaining)}
-                                </b>
                               </div>
                             );
                           })}
@@ -477,9 +487,9 @@ export function TrayPopover({
                       <div className="tray-quota-header">
                         <div className="tray-quota-identity">
                           <strong>{provider.displayName}</strong>
+                          {qoderMeta && <span className="tray-quota-meta">{qoderMeta}</span>}
                         </div>
                       </div>
-                      {qoderMeta && <p className="tray-quota-meta">{qoderMeta}</p>}
                       <div className="tray-quota-meter">
                         <div
                           className="tray-quota-track"
@@ -503,7 +513,11 @@ export function TrayPopover({
             <div className="tray-section-divider" aria-hidden="true" />
           </>
         ) : null}
-        <TokenActivityCard activity={data.tokenActivity} sectionRef={tokenSectionRef} />
+        <TokenActivityCard
+          activity={data.tokenActivity}
+          sectionRef={tokenSectionRef}
+          appearance={appearance}
+        />
       </main>
     </div>
   );

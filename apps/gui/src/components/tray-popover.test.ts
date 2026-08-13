@@ -17,8 +17,9 @@ import {
 } from "./tray-popover";
 
 describe("tray quota overview", () => {
-  it("formats reset countdowns to the minute", () => {
-    expect(formatResetCountdown(362_580, 0)).toBe("100小时43分");
+  it("formats reset countdowns in days and hours after one day", () => {
+    expect(formatResetCountdown(362_580, 0)).toBe("4天4小时");
+    expect(formatResetCountdown(86_400, 0)).toBe("1天");
     expect(formatResetCountdown(3_660, 0)).toBe("1小时1分");
     expect(formatResetCountdown(60, 0)).toBe("1分");
     expect(formatResetCountdown(0, 0)).toBe("待更新");
@@ -28,7 +29,8 @@ describe("tray quota overview", () => {
     expect(formatQuotaPercent(98.36)).toBe("98.4%");
     expect(formatQuotaPercent(100)).toBe("100%");
     expect(formatQuotaPercent(null)).toBe("--");
-    expect(formatRefreshDuration(604_620)).toBe("167小时57分");
+    expect(formatRefreshDuration(604_620)).toBe("6天23小时");
+    expect(formatRefreshDuration(90_000)).toBe("1天1小时");
     expect(formatRefreshDuration(null)).toBeNull();
     expect(formatQuotaPoolName("qoder-cn", "Plan Credits")).toBe("套餐额度");
     expect(formatQuotaPoolName("antigravity", "GEMINI MODELS")).toBe("Gemini 模型");
@@ -60,7 +62,7 @@ describe("tray quota overview", () => {
     ]);
 
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.label).toBe("Gemini");
+    expect(groups[0]?.label).toBe("AGY · Google");
     expect(groups[0]?.pools.map((pool) => pool.windowLabel)).toEqual([
       "每周",
       "Daily Limit Remaining",
@@ -308,15 +310,15 @@ describe("tray quota overview", () => {
       }),
     );
 
-    expect(markup).toContain("今日 Token");
+    expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token</dt>');
     expect(markup).toContain('aria-label="Codex 额度"');
     expect(markup).toContain('aria-label="Qoder 国内版 额度"');
-    expect(markup).toContain('aria-label="Gemini 额度"');
-    expect(markup).toContain('aria-label="Gemini 每周 额度"');
-    expect(markup).toContain('aria-label="Gemini 5小时 额度"');
-    expect(markup).toContain('aria-label="Claude 与 GPT 额度"');
-    expect(markup).toContain('aria-label="Claude 与 GPT 每周 额度"');
-    expect(markup).toContain('aria-label="Claude 与 GPT 5小时 额度"');
+    expect(markup).toContain('aria-label="AGY · Google 额度"');
+    expect(markup).toContain('aria-label="AGY · Google 每周 额度"');
+    expect(markup).toContain('aria-label="AGY · Google 5小时 额度"');
+    expect(markup).toContain('aria-label="AGY · Claude 额度"');
+    expect(markup).toContain('aria-label="AGY · Claude 每周 额度"');
+    expect(markup).toContain('aria-label="AGY · Claude 5小时 额度"');
     expect(markup).toContain('data-provider="codex"');
     expect(markup).toContain('data-provider="qoder-cn"');
     expect(markup).toContain('data-group="gemini"');
@@ -324,10 +326,11 @@ describe("tray quota overview", () => {
     expect(markup.match(/tray-quota-row/g)).toHaveLength(2);
     expect(markup.match(/tray-quota-group/g)).toHaveLength(4);
     expect(markup.match(/tray-quota-window-row /g)).toHaveLength(4);
-    expect(markup.match(/tray-quota-meter/g)).toHaveLength(2);
+    expect(markup.match(/tray-quota-meter(?:\s|")/g)).toHaveLength(6);
+    expect(markup.match(/tray-quota-meter--window/g)).toHaveLength(4);
     expect(markup).toMatch(/tray-quota-meter[\s\S]*?tray-quota-track[\s\S]*?tray-quota-percent/);
     expect(markup).toMatch(
-      /tray-quota-window-row tray-quota-window-row--weekly[\s\S]*?tray-quota-window-label[\s\S]*?tray-quota-duration[\s\S]*?tray-quota-track tray-quota-track--window[\s\S]*?tray-quota-percent/,
+      /tray-quota-window-row tray-quota-window-row--weekly[\s\S]*?tray-quota-window-identity[\s\S]*?tray-quota-window-label[\s\S]*?tray-quota-duration[\s\S]*?tray-quota-meter tray-quota-meter--window[\s\S]*?tray-quota-track tray-quota-track--window[\s\S]*?tray-quota-percent/,
     );
     expect(markup).toContain("Codex");
     expect(markup).not.toContain('aria-label="ZCode 额度"');
@@ -339,15 +342,21 @@ describe("tray quota overview", () => {
     expect(markup).not.toContain("codex-cli 1.0.0");
     expect(markup).not.toContain("1.1.17");
     expect(markup).not.toContain("1.1.11");
-    expect(markup).toContain("134小时39分");
+    expect(markup).toContain("5天14小时");
     expect(markup).not.toContain("1次重置卡");
     expect(markup).not.toContain("8月13日到期");
     expect(markup).not.toContain("加购额度");
     expect(markup).not.toContain(">暂无<");
     expect(markup).toContain("1 / 300 · Pro Trial");
+    expect(markup).toMatch(
+      /tray-quota-identity[\s\S]*?<strong>Codex<\/strong>[\s\S]*?tray-quota-duration/,
+    );
+    expect(markup).toMatch(
+      /tray-quota-identity[\s\S]*?<strong>Qoder 国内版<\/strong>[\s\S]*?tray-quota-meta[\s\S]*?1 \/ 300 · Pro Trial/,
+    );
     expect(markup).toContain("99.7%");
     expect(markup).toContain("98.4%");
-    expect(markup).toContain("167小时57分");
+    expect(markup).toContain("6天23小时");
     expect(markup).toContain(">每周<");
     expect(markup).toContain(">5小时<");
     expect(markup).toContain("tray-quota-window-row--weekly");
@@ -360,7 +369,7 @@ describe("tray quota overview", () => {
     expect(markup).not.toContain("<select");
     expect(markup).not.toContain("tray-chart-card");
     expect(markup.indexOf("Codex")).toBeLessThan(markup.indexOf("Qoder 国内版"));
-    expect(markup.indexOf("Qoder 国内版")).toBeLessThan(markup.indexOf("Gemini"));
+    expect(markup.indexOf("Qoder 国内版")).toBeLessThan(markup.indexOf("AGY · Google"));
   });
 
   it("omits disabled and unavailable providers instead of rendering placeholders", () => {
@@ -412,7 +421,7 @@ describe("tray quota overview", () => {
         ],
       }),
     );
-    expect(markup).toContain('aria-label="Claude 与 GPT 未知窗口 额度"');
+    expect(markup).toContain('aria-label="AGY · Claude 未知窗口 额度"');
     expect(markup).toContain(">0%<");
   });
 
@@ -514,6 +523,6 @@ describe("tray quota overview", () => {
 
     expect(markup).not.toContain("tray-usage-stack");
     expect(markup).not.toContain("tray-section-divider");
-    expect(markup).toContain("今日 Token");
+    expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token</dt>');
   });
 });

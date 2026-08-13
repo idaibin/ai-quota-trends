@@ -1,7 +1,27 @@
+import {
+  arrow,
+  autoUpdate,
+  flip,
+  FloatingArrow,
+  FloatingPortal,
+  offset,
+  shift,
+  useDismiss,
+  useFloating,
+  useHover,
+  useInteractions,
+  useRole,
+  useTransitionStyles,
+} from "@floating-ui/react";
 import { ActivityCalendar } from "react-activity-calendar";
-import type { Activity } from "react-activity-calendar";
-import type { Ref } from "react";
-import "react-activity-calendar/tooltips.css";
+import {
+  cloneElement,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+  type Ref,
+} from "react";
 import type { ModelTokenActivity, TokenActivity, TokenUsageHistoryDay } from "../types";
 
 const HEATMAP_DAYS = 90;
@@ -15,13 +35,26 @@ const PROVIDER_NAMES: Record<string, string> = {
   antigravity: "Antigravity",
 };
 
-export const TOKEN_HEATMAP_COLORS = [
+export const TOKEN_HEATMAP_COLORS_DARK = [
   "#2a2540",
-  "#493b6c",
-  "#644e91",
-  "#8064b6",
-  "#ab8bdd",
+  "#4b3270",
+  "#69469a",
+  "#895cc6",
+  "#b47eea",
 ] as const;
+
+export const TOKEN_HEATMAP_COLORS_LIGHT = [
+  "#eee8f8",
+  "#ddcef4",
+  "#c2a9ea",
+  "#9c75dc",
+  "#713bc5",
+] as const;
+
+export const TOKEN_HEATMAP_COLORS = TOKEN_HEATMAP_COLORS_DARK;
+
+const TOKEN_TOOLTIP_COLORS_DARK = ["#9b82c9", "#aa84df", "#bb8ff0", "#cf9cff"] as const;
+const TOKEN_TOOLTIP_COLORS_LIGHT = ["#7440ba", "#6730b2", "#5824a5", "#47178f"] as const;
 
 export interface TokenHeatmapCell extends TokenUsageHistoryDay {
   dayOfWeek: number;
@@ -44,16 +77,37 @@ const addDays = (date: Date, amount: number) => {
   return next;
 };
 
+export function formatTokenCountParts(value: number): { value: string; unit: string } {
+  if (value >= 100_000_000) {
+    return { value: (value / 100_000_000).toFixed(2), unit: "亿" };
+  }
+  if (value >= 10_000_000) {
+    return { value: String(Math.round(value / 10_000)), unit: "万" };
+  }
+  if (value >= 10_000) {
+    return { value: (value / 10_000).toFixed(1).replace(/\.0$/, ""), unit: "万" };
+  }
+  return { value: Math.round(value).toLocaleString("zh-CN"), unit: "" };
+}
+
 export function formatTokenCount(value: number): string {
-  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(2)}亿`;
-  if (value >= 10_000_000) return `${Math.round(value / 10_000)}万`;
-  if (value >= 10_000) return `${(value / 10_000).toFixed(1).replace(/\.0$/, "")}万`;
-  return Math.round(value).toLocaleString("zh-CN");
+  const parts = formatTokenCountParts(value);
+  return `${parts.value}${parts.unit}`;
 }
 
 export function tokenHeatLevel(value: number, maximum: number): number {
   if (value <= 0 || maximum <= 0) return 0;
   return Math.min(4, Math.max(1, Math.ceil(Math.sqrt(value / maximum) * 4)));
+}
+
+export function tokenTooltipColor(
+  value: number,
+  maximum: number,
+  appearance: "light" | "dark" = "dark",
+): string {
+  const level = tokenHeatLevel(value, maximum);
+  const colors = appearance === "light" ? TOKEN_TOOLTIP_COLORS_LIGHT : TOKEN_TOOLTIP_COLORS_DARK;
+  return colors[Math.max(0, level - 1)];
 }
 
 export function buildTokenHeatmap(
@@ -89,7 +143,21 @@ const todayDay = () => {
   ).padStart(2, "0")}`;
 };
 
-export const tokenTooltipDetails = (cell: TokenHeatmapCell, models: ModelTokenActivity[] = []) => {
+export interface TokenTooltipProvider {
+  providerId: string;
+  name: string;
+  tokens: number;
+}
+
+export interface TokenTooltipDetails {
+  date: string;
+  providers: TokenTooltipProvider[];
+}
+
+export const tokenTooltipDetails = (
+  cell: TokenHeatmapCell,
+  models: ModelTokenActivity[] = [],
+): TokenTooltipDetails => {
   const [, month, day] = cell.day.split("-").map(Number);
   const providers = new Map<
     string,
@@ -127,10 +195,98 @@ export const tokenTooltipDetails = (cell: TokenHeatmapCell, models: ModelTokenAc
   };
 };
 
+export function TokenTooltipContent({
+  details,
+  appearance = "dark",
+}: {
+  details: TokenTooltipDetails;
+  appearance?: "light" | "dark";
+}) {
+  const maximum = Math.max(0, ...details.providers.map((provider) => provider.tokens));
+
+  return (
+    <div className="tray-token-tooltip-content">
+      <div className="tray-token-tooltip-date">{details.date}</div>
+      {details.providers.length > 0 ? (
+        <div className="tray-token-tooltip-list">
+          {details.providers.map((provider) => {
+            const tokenCount = formatTokenCountParts(provider.tokens);
+            const level = tokenHeatLevel(provider.tokens, maximum);
+            const style = {
+              "--tray-token-tooltip-value": tokenTooltipColor(provider.tokens, maximum, appearance),
+            } as CSSProperties;
+            return (
+              <div
+                className="tray-token-tooltip-row"
+                data-provider={provider.providerId}
+                data-token-level={level}
+                key={provider.providerId}
+                style={style}
+              >
+                <span className="tray-token-tooltip-model">{provider.name}</span>
+                <span className="tray-token-tooltip-value">{tokenCount.value}</span>
+                <span className="tray-token-tooltip-unit">{tokenCount.unit}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="tray-token-tooltip-empty">暂无明细</p>
+      )}
+    </div>
+  );
+}
+
+function TokenActivityTooltip({
+  children,
+  details,
+  appearance,
+}: {
+  children: ReactElement;
+  details: TokenTooltipDetails;
+  appearance: "light" | "dark";
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const arrowRef = useRef<SVGSVGElement | null>(null);
+  const { context, refs, floatingStyles } = useFloating({
+    open: isOpen,
+    onOpenChange: setIsOpen,
+    placement: "top",
+    middleware: [flip(), offset(7), shift({ padding: 8 }), arrow({ element: arrowRef })],
+    whileElementsMounted: autoUpdate,
+  });
+  const hover = useHover(context, { restMs: 100 });
+  const dismiss = useDismiss(context);
+  const role = useRole(context, { role: "tooltip" });
+  const { getReferenceProps, getFloatingProps } = useInteractions([hover, dismiss, role]);
+  const { isMounted, styles: transitionStyles } = useTransitionStyles(context, {
+    duration: 80,
+  });
+  const reference = children as ReactElement<{ ref: Ref<unknown> }>;
+
+  return (
+    <>
+      {cloneElement(reference, { ref: refs.setReference, ...getReferenceProps() })}
+      {isMounted && (
+        <FloatingPortal>
+          <div
+            ref={refs.setFloating}
+            className="tray-token-tooltip"
+            style={{ ...floatingStyles, ...transitionStyles }}
+            {...getFloatingProps()}
+          >
+            <TokenTooltipContent details={details} appearance={appearance} />
+            <FloatingArrow ref={arrowRef} context={context} className="tray-token-tooltip-arrow" />
+          </div>
+        </FloatingPortal>
+      )}
+    </>
+  );
+}
+
 /**
- * The calendar library owns tooltip positioning and collision handling. Keep
- * the content plain text so the provider totals remain readable in a native
- * popover without adding a second tooltip layer.
+ * The accessible text form mirrors the structured visual tooltip without
+ * exposing internal model identifiers or adding a second daily total.
  */
 export const formatTokenTooltip = (cell: TokenHeatmapCell, models: ModelTokenActivity[] = []) => {
   const details = tokenTooltipDetails(cell, models);
@@ -150,9 +306,11 @@ export const formatTokenTooltip = (cell: TokenHeatmapCell, models: ModelTokenAct
 export function TokenActivityCard({
   activity,
   sectionRef,
+  appearance = "dark",
 }: {
   activity: TokenActivity;
   sectionRef?: Ref<HTMLElement>;
+  appearance?: "light" | "dark";
 }) {
   const cells = buildTokenHeatmap(activity.history, todayDay());
   const maximum = Math.max(0, ...cells.map((cell) => cell.totalTokens));
@@ -168,16 +326,16 @@ export function TokenActivityCard({
   }));
   return (
     <section ref={sectionRef} className="tray-token-section" aria-label="Token 使用统计">
-      <dl className="tray-token-metrics">
-        <div className="tray-token-metric tray-token-metric--primary">
-          <dt>今日 Token</dt>
-          <dd>{formatTokenCount(activity.today.totalTokens)}</dd>
-        </div>
-      </dl>
       <div className="tray-token-heatmap" role="img" aria-label={rangeSummary}>
+        <dl className="tray-token-metrics">
+          <div className="tray-token-metric tray-token-metric--primary">
+            <dt className="tray-token-metric-label">今日 Token</dt>
+            <dd>{formatTokenCount(activity.today.totalTokens)}</dd>
+          </div>
+        </dl>
         <ActivityCalendar
           className="tray-token-calendar"
-          colorScheme="dark"
+          colorScheme={appearance}
           data={calendarData}
           blockMargin={TOKEN_HEATMAP_BLOCK_MARGIN}
           blockRadius={3}
@@ -205,19 +363,22 @@ export function TokenActivityCard({
           showColorLegend={false}
           showTotalCount={false}
           showWeekdayLabels={false}
-          theme={{ dark: [...TOKEN_HEATMAP_COLORS] }}
-          tooltips={{
-            activity: {
-              offset: 7,
-              placement: "top",
-              text: (activityDay: Activity) => {
-                const cell = cellsByDay.get(activityDay.date);
-                return cell
-                  ? formatTokenTooltip(cell, activity.models)
-                  : `${activityDay.date}\n暂无明细`;
-              },
-              withArrow: true,
-            },
+          theme={{
+            dark: [...TOKEN_HEATMAP_COLORS_DARK],
+            light: [...TOKEN_HEATMAP_COLORS_LIGHT],
+          }}
+          renderBlock={(block, activityDay) => {
+            const cell = cellsByDay.get(activityDay.date);
+            return cell ? (
+              <TokenActivityTooltip
+                details={tokenTooltipDetails(cell, activity.models)}
+                appearance={appearance}
+              >
+                {block}
+              </TokenActivityTooltip>
+            ) : (
+              block
+            );
           }}
           weekStart={0}
         />
