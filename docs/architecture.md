@@ -13,11 +13,13 @@ until this gate passes. See `feasibility-poc.md`.
 AI Quota Trends is a multi-provider quota and Token usage Client/Tauri repository.
 
 The provider catalog is deliberately fixed. Codex owns the persistent quota collector.
-ZCode contributes read-only model-level Token activity from its local usage database.
-Qoder CN and Antigravity expose their account quota through their installed CLI usage
-screens; the app reads those screens on demand through a bounded PTY and does not read
-provider credentials, send model prompts, or persist those observations as trend
-snapshots. This is not a plugin system.
+ZCode and Antigravity CLI contribute read-only model-level Token activity from their
+local usage databases. Qoder CN and Antigravity expose their account quota through their
+installed CLI usage screens; the app reads those screens on demand through a bounded PTY
+and does not read provider credentials, send model prompts, or persist those observations
+as trend snapshots. Antigravity Token collection separately reads only the model, usage,
+response ID, and timestamp fields from local conversation metadata; it does not inspect
+conversation content. This is not a plugin system.
 
 ```text
 apps/gui/src         React presentation and interaction

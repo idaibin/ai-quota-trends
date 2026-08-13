@@ -52,8 +52,14 @@ source, local day, provider, and model. It preserves the aggregate Token tables
 while allowing the popover heatmap to split a day's completed-request total Tokens by model.
 ZCode model usage is not copied into this database: the app opens
 `~/.zcode/cli/db/db.sqlite` read-only and groups completed `model_usage` rows by
-local day and model. Qoder CN and Antigravity do not contribute model Token rows
-until a stable local usage contract is verified.
+local day and model. Antigravity CLI Token usage is likewise not copied into this
+database: the app opens each local
+`~/.gemini/antigravity-cli/conversations/*.db` file read-only and decodes only the
+model, timestamp, response ID, and Token buckets from `gen_metadata` protobuf
+blobs. `GEMINI_CLI_HOME` is honored when configured. Duplicate response IDs are
+counted once, and no conversation text or provider credential is read. Qoder CN
+does not contribute model Token rows until a stable local usage contract is
+verified.
 If retained aggregate Codex rows can no longer be attributed because their source
 JSONL is unavailable, the positive daily difference is surfaced as `Codex · 未归类`
 instead of dropping the historical total or inventing a model name.

@@ -1,8 +1,9 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::{Mutex, OnceLock},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -133,7 +134,7 @@ const PROVIDERS: [ProviderDescriptor; 4] = [
         home_candidates: &[".local/bin/agy"],
         version_args: &["--version"],
         quota_collection_supported: true,
-        support_note: "通过 Antigravity CLI /quota 读取本地额度屏幕",
+        support_note: "已接入本地额度与模型 Token 明细",
     },
 ];
 
@@ -654,6 +655,331 @@ pub fn read_zcode_model_activity(today: &str, since: &str) -> Result<Vec<ModelTo
     read_zcode_model_activity_from(&path, today, since)
 }
 
+/// Read AGY CLI's locally persisted per-generation Token metadata.
+///
+/// AGY stores each conversation as a SQLite database under
+/// `~/.gemini/antigravity-cli/conversations`. The `gen_metadata.data` column is
+/// protobuf, so only the handful of stable usage/model/timestamp fields needed
+/// by the dashboard are decoded here. No AGY process, account token, network
+/// request, or protobuf dependency is required.
+pub fn read_antigravity_model_activity(
+    today: &str,
+    since: &str,
+) -> Result<Vec<ModelTokenActivity>> {
+    let root = if let Some(root) = env::var_os("GEMINI_CLI_HOME") {
+        PathBuf::from(root)
+    } else if let Some(home) = env::var_os("HOME") {
+        PathBuf::from(home).join(".gemini")
+    } else {
+        return Ok(Vec::new());
+    };
+    let path = root.join("antigravity-cli/conversations");
+    if !path.is_dir() {
+        return Ok(Vec::new());
+    }
+    const CACHE_TTL: Duration = Duration::from_secs(30);
+    static CACHE: OnceLock<Mutex<Option<AntigravityActivityCache>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(cached) = cache.lock()
+        && let Some(cached) = cached.as_ref()
+        && cached.directory == path
+        && cached.today == today
+        && cached.since == since
+        && cached.cached_at.elapsed() < CACHE_TTL
+    {
+        return Ok(cached.models.clone());
+    }
+
+    let models = read_antigravity_model_activity_from_dir(&path, today, since)?;
+    if let Ok(mut cached) = cache.lock() {
+        *cached = Some(AntigravityActivityCache {
+            directory: path,
+            today: today.to_owned(),
+            since: since.to_owned(),
+            cached_at: Instant::now(),
+            models: models.clone(),
+        });
+    }
+    Ok(models)
+}
+
+struct AntigravityActivityCache {
+    directory: PathBuf,
+    today: String,
+    since: String,
+    cached_at: Instant,
+    models: Vec<ModelTokenActivity>,
+}
+
+#[derive(Default)]
+struct AntigravityUsageAggregate {
+    usage: TokenUsageDay,
+    sessions: HashSet<String>,
+}
+
+fn read_antigravity_model_activity_from_dir(
+    directory: &Path,
+    today: &str,
+    since: &str,
+) -> Result<Vec<ModelTokenActivity>> {
+    let mut daily = BTreeMap::<(String, String), AntigravityUsageAggregate>::new();
+    let mut seen_response_ids = HashSet::<String>::new();
+    let entries = fs::read_dir(directory).with_context(|| {
+        format!("failed to read AGY conversation directory at {}", directory.display())
+    })?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("db") {
+            continue;
+        }
+        let session_id =
+            path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("unknown").to_owned();
+        let Ok(connection) = Connection::open_with_flags(
+            &path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        ) else {
+            continue;
+        };
+        let session_timestamp = antigravity_session_timestamp(&connection, &path);
+        let Ok(mut statement) = connection.prepare("SELECT data FROM gen_metadata ORDER BY idx")
+        else {
+            continue;
+        };
+        let Ok(rows) = statement.query_map([], |row| row.get::<_, Vec<u8>>(0)) else {
+            continue;
+        };
+        let blobs = rows.flatten().collect::<Vec<_>>();
+        let models = antigravity_session_models(&blobs);
+
+        for blob in blobs {
+            let Some(chat_model) = proto_message_field(&blob, 1) else { continue };
+            let Some(usage) = proto_message_field(chat_model, 4) else { continue };
+            let response_id =
+                proto_string_field(usage, 11).filter(|value| !value.trim().is_empty());
+            if let Some(response_id) = response_id
+                && !seen_response_ids.insert(response_id.to_owned())
+            {
+                continue;
+            }
+
+            let uncached_input =
+                proto_saturating_u64(usage, 1).saturating_add(proto_saturating_u64(usage, 2));
+            let cached_input = proto_saturating_u64(usage, 5);
+            let output = proto_saturating_u64(usage, 9);
+            let reasoning = proto_saturating_u64(usage, 10);
+            if uncached_input == 0 && cached_input == 0 && output == 0 && reasoning == 0 {
+                continue;
+            }
+
+            let timestamp = proto_message_field(chat_model, 9)
+                .and_then(|generation| proto_message_field(generation, 4))
+                .and_then(proto_timestamp_ms)
+                .filter(|timestamp| *timestamp > 0)
+                .unwrap_or(session_timestamp);
+            let Some(day) = DateTime::from_timestamp_millis(timestamp).map(|timestamp| {
+                timestamp.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string()
+            }) else {
+                continue;
+            };
+            if day.as_str() < since {
+                continue;
+            }
+
+            let label = proto_string_field(chat_model, 21).filter(|value| !value.trim().is_empty());
+            let model_id = proto_string_field(chat_model, 19)
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| label.and_then(|label| models.get(label).map(String::as_str)))
+                .or(label)
+                .unwrap_or("unknown")
+                .to_owned();
+            let aggregate = daily.entry((model_id, day)).or_default();
+            aggregate.usage.input_tokens = aggregate
+                .usage
+                .input_tokens
+                .saturating_add(uncached_input.saturating_add(cached_input));
+            aggregate.usage.cached_input_tokens =
+                aggregate.usage.cached_input_tokens.saturating_add(cached_input);
+            aggregate.usage.non_cached_input_tokens =
+                aggregate.usage.non_cached_input_tokens.saturating_add(uncached_input);
+            aggregate.usage.total_tokens = aggregate
+                .usage
+                .total_tokens
+                .saturating_add(uncached_input)
+                .saturating_add(cached_input)
+                .saturating_add(output)
+                .saturating_add(reasoning);
+            aggregate.usage.call_count = aggregate.usage.call_count.saturating_add(1);
+            aggregate.sessions.insert(session_id.clone());
+        }
+    }
+
+    let mut histories = BTreeMap::<String, Vec<TokenUsageHistoryDay>>::new();
+    for ((model_id, day), mut aggregate) in daily {
+        aggregate.usage.session_count = aggregate.sessions.len() as u64;
+        histories
+            .entry(model_id)
+            .or_default()
+            .push(TokenUsageHistoryDay { day, usage: aggregate.usage });
+    }
+    Ok(histories
+        .into_iter()
+        .map(|(model_id, history)| ModelTokenActivity {
+            provider_id: "antigravity".to_owned(),
+            display_name: format!("AGY · {model_id}"),
+            today: history
+                .iter()
+                .find(|usage| usage.day == today)
+                .map(|usage| usage.usage)
+                .unwrap_or_default(),
+            model_id,
+            history,
+        })
+        .collect())
+}
+
+fn antigravity_session_models(blobs: &[Vec<u8>]) -> HashMap<String, String> {
+    let mut models = HashMap::new();
+    for blob in blobs {
+        let Some(chat_model) = proto_message_field(blob, 1) else { continue };
+        let Some(model) =
+            proto_string_field(chat_model, 19).filter(|value| !value.trim().is_empty())
+        else {
+            continue;
+        };
+        if let Some(label) =
+            proto_string_field(chat_model, 21).filter(|value| !value.trim().is_empty())
+        {
+            models.entry(label.to_owned()).or_insert_with(|| model.to_owned());
+        }
+    }
+    models
+}
+
+fn antigravity_session_timestamp(connection: &Connection, path: &Path) -> i64 {
+    connection
+        .query_row("SELECT data FROM trajectory_metadata_blob LIMIT 1", [], |row| {
+            row.get::<_, Vec<u8>>(0)
+        })
+        .ok()
+        .and_then(|blob| proto_message_field(&blob, 2).and_then(proto_timestamp_ms))
+        .filter(|timestamp| *timestamp > 0)
+        .unwrap_or_else(|| {
+            fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
+                .unwrap_or(0)
+        })
+}
+
+fn proto_timestamp_ms(message: &[u8]) -> Option<i64> {
+    let seconds = i64::try_from(proto_varint_field(message, 1)?).ok()?;
+    let nanos = i64::try_from(proto_varint_field(message, 2).unwrap_or(0)).ok()?;
+    if !(0..=999_999_999).contains(&nanos) {
+        return None;
+    }
+    seconds.checked_mul(1_000)?.checked_add(nanos / 1_000_000)
+}
+
+fn proto_saturating_u64(message: &[u8], field: u64) -> u64 {
+    proto_varint_field(message, field).unwrap_or(0)
+}
+
+enum ProtoValue<'a> {
+    Varint(u64),
+    Bytes(&'a [u8]),
+    Other,
+}
+
+struct ProtoReader<'a> {
+    bytes: &'a [u8],
+    position: usize,
+}
+
+impl<'a> ProtoReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, position: 0 }
+    }
+
+    fn read_varint(&mut self) -> Option<u64> {
+        let mut value = 0_u64;
+        let mut shift = 0_u32;
+        loop {
+            let byte = *self.bytes.get(self.position)?;
+            self.position += 1;
+            value |= u64::from(byte & 0x7f) << shift;
+            if byte & 0x80 == 0 {
+                return Some(value);
+            }
+            shift += 7;
+            if shift >= 64 {
+                return None;
+            }
+        }
+    }
+
+    fn next(&mut self) -> Option<(u64, ProtoValue<'a>)> {
+        if self.position >= self.bytes.len() {
+            return None;
+        }
+        let tag = self.read_varint()?;
+        let field = tag >> 3;
+        let value = match tag & 7 {
+            0 => ProtoValue::Varint(self.read_varint()?),
+            1 => {
+                self.position =
+                    self.position.checked_add(8).filter(|end| *end <= self.bytes.len())?;
+                ProtoValue::Other
+            }
+            2 => {
+                let length = usize::try_from(self.read_varint()?).ok()?;
+                let end =
+                    self.position.checked_add(length).filter(|end| *end <= self.bytes.len())?;
+                let value = &self.bytes[self.position..end];
+                self.position = end;
+                ProtoValue::Bytes(value)
+            }
+            5 => {
+                self.position =
+                    self.position.checked_add(4).filter(|end| *end <= self.bytes.len())?;
+                ProtoValue::Other
+            }
+            _ => return None,
+        };
+        Some((field, value))
+    }
+}
+
+fn proto_message_field(message: &[u8], field: u64) -> Option<&[u8]> {
+    let mut reader = ProtoReader::new(message);
+    while let Some((candidate, value)) = reader.next() {
+        if candidate == field
+            && let ProtoValue::Bytes(bytes) = value
+        {
+            return Some(bytes);
+        }
+    }
+    None
+}
+
+fn proto_string_field(message: &[u8], field: u64) -> Option<&str> {
+    std::str::from_utf8(proto_message_field(message, field)?).ok()
+}
+
+fn proto_varint_field(message: &[u8], field: u64) -> Option<u64> {
+    let mut reader = ProtoReader::new(message);
+    while let Some((candidate, value)) = reader.next() {
+        if candidate == field
+            && let ProtoValue::Varint(value) = value
+        {
+            return Some(value);
+        }
+    }
+    None
+}
+
 fn read_zcode_model_activity_from(
     path: &Path,
     today: &str,
@@ -958,6 +1284,148 @@ mod tests {
         assert_eq!(models[0].today.cached_input_tokens, 110);
         assert_eq!(models[0].today.session_count, 2);
         assert_eq!(models[0].today.call_count, 3);
+    }
+
+    #[test]
+    fn reads_antigravity_cli_usage_from_conversation_protobuf() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("session-one.db");
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE gen_metadata(idx INTEGER, data BLOB, size INTEGER);
+                 CREATE TABLE trajectory_metadata_blob(id TEXT, data BLOB);",
+            )
+            .unwrap();
+
+        let usage = proto_message(&[
+            proto_varint(1, 1_132),
+            proto_varint(2, 500),
+            proto_varint(5, 16_000),
+            proto_varint(9, 300),
+            proto_varint(10, 40),
+            proto_bytes(11, b"response-one"),
+        ]);
+        let timestamp = proto_message(&[proto_varint(1, 1_785_318_400)]);
+        let generation = proto_message(&[proto_bytes(4, &timestamp)]);
+        let chat_model = proto_message(&[
+            proto_bytes(4, &usage),
+            proto_bytes(9, &generation),
+            proto_bytes(19, b"gemini-3-flash-agent"),
+        ]);
+        let metadata = proto_bytes(1, &chat_model);
+        connection
+            .execute(
+                "INSERT INTO gen_metadata(idx, data, size) VALUES (0, ?1, ?2)",
+                rusqlite::params![metadata, metadata.len()],
+            )
+            .unwrap();
+        drop(connection);
+
+        let models = super::read_antigravity_model_activity_from_dir(
+            temp.path(),
+            "2026-07-29",
+            "2026-07-29",
+        )
+        .unwrap();
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].provider_id, "antigravity");
+        assert_eq!(models[0].model_id, "gemini-3-flash-agent");
+        assert_eq!(models[0].display_name, "AGY · gemini-3-flash-agent");
+        assert_eq!(models[0].today.input_tokens, 17_632);
+        assert_eq!(models[0].today.cached_input_tokens, 16_000);
+        assert_eq!(models[0].today.non_cached_input_tokens, 1_632);
+        assert_eq!(models[0].today.total_tokens, 17_972);
+        assert_eq!(models[0].today.session_count, 1);
+        assert_eq!(models[0].today.call_count, 1);
+    }
+
+    #[test]
+    fn deduplicates_antigravity_response_ids_and_recovers_missing_row_model() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("session-two.db");
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute_batch("CREATE TABLE gen_metadata(idx INTEGER, data BLOB, size INTEGER);")
+            .unwrap();
+        let timestamp = proto_message(&[proto_varint(1, 1_785_318_400)]);
+        let generation = proto_message(&[proto_bytes(4, &timestamp)]);
+        let usage = proto_message(&[
+            proto_varint(2, 10),
+            proto_varint(9, 5),
+            proto_bytes(11, b"same-response"),
+        ]);
+        let identified = proto_bytes(
+            1,
+            &proto_message(&[
+                proto_bytes(4, &usage),
+                proto_bytes(9, &generation),
+                proto_bytes(19, b"gemini-pro-agent"),
+                proto_bytes(21, b"Gemini Pro (High)"),
+            ]),
+        );
+        let missing_model = proto_bytes(
+            1,
+            &proto_message(&[
+                proto_bytes(4, &usage),
+                proto_bytes(9, &generation),
+                proto_bytes(21, b"Gemini Pro (High)"),
+            ]),
+        );
+        for (idx, metadata) in [identified, missing_model].into_iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO gen_metadata(idx, data, size) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![idx, metadata, metadata.len()],
+                )
+                .unwrap();
+        }
+        drop(connection);
+
+        let models = super::read_antigravity_model_activity_from_dir(
+            temp.path(),
+            "2026-07-29",
+            "2026-07-29",
+        )
+        .unwrap();
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].model_id, "gemini-pro-agent");
+        assert_eq!(models[0].today.total_tokens, 15);
+        assert_eq!(models[0].today.call_count, 1);
+    }
+
+    fn proto_message(fields: &[Vec<u8>]) -> Vec<u8> {
+        fields.iter().flatten().copied().collect()
+    }
+
+    fn proto_varint(field: u64, value: u64) -> Vec<u8> {
+        let mut encoded = encode_proto_varint(field << 3);
+        encoded.extend(encode_proto_varint(value));
+        encoded
+    }
+
+    fn proto_bytes(field: u64, value: &[u8]) -> Vec<u8> {
+        let mut encoded = encode_proto_varint((field << 3) | 2);
+        encoded.extend(encode_proto_varint(value.len() as u64));
+        encoded.extend_from_slice(value);
+        encoded
+    }
+
+    fn encode_proto_varint(mut value: u64) -> Vec<u8> {
+        let mut encoded = Vec::new();
+        loop {
+            let mut byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value != 0 {
+                byte |= 0x80;
+            }
+            encoded.push(byte);
+            if value == 0 {
+                return encoded;
+            }
+        }
     }
 
     #[test]
