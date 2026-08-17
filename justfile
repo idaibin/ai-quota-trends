@@ -36,7 +36,7 @@ build:
   cd apps/gui && npm run build
 
 build-gui:
-  cd apps/gui && npm run tauri build -- --debug --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
+  cd apps/gui && CARGO_TARGET_DIR="$PWD/../../target.noindex" npm run tauri build -- --debug --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
 release-gui:
   ./scripts/build-release-gui.sh

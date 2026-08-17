@@ -35,7 +35,8 @@ if [[ "$version" != "$package_version" || "$version" != "$workspace_version" ]];
   exit 1
 fi
 
-bundle_dir="$root_dir/target/universal-apple-darwin/release/bundle"
+export CARGO_TARGET_DIR="$root_dir/target.noindex"
+bundle_dir="$CARGO_TARGET_DIR/universal-apple-darwin/release/bundle"
 archive="$bundle_dir/macos/AI Quota Trends.app.tar.gz"
 signature="$archive.sig"
 manifest="$bundle_dir/macos/latest.json"

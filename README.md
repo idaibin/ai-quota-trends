@@ -91,7 +91,7 @@ The command reads the project key and password from `~/.codex/secrets`. The new
 `codex-quota-trends-updater.*` files remain a read-only compatibility source so an
 existing signing identity is not lost during the repository rename. It creates
 the app, DMG, updater archive, signature, and `latest.json` under
-`target/universal-apple-darwin/release/bundle`, and never uploads them.
+`target.noindex/universal-apple-darwin/release/bundle`, and never uploads them.
 
 After inspecting the local artifacts, create the `vX.Y.Z` tag and upload those
 files to the matching GitHub Release manually. GitHub Releases is only the

@@ -1,5 +1,21 @@
 # Design QA
 
+## Token calendar, Claude CLI, and Spotlight deduplication — 2026-08-17
+
+- Scope: group the current-day Token total with its provider breakdown, preserve every month label, add Claude CLI local Token activity, and remove the duplicate Spotlight result for the debug app bundle.
+- Token layout: the `今日 Token 来源` label, current-day total, and two-column provider breakdown now form one summary above the history heatmap. The former floating total and its compensating 20px calendar offset are removed, so all month labels remain visible. Claude CLI remains visible as `0` on days without a completed request instead of mixing a 90-day cumulative value into the daily view.
+- Claude source: recursively read `~/.claude/projects/**/*.jsonl`, deserialize only assistant timestamp/session/message/model/usage metadata, deduplicate streamed records by session plus message ID, and aggregate uncached input, cache creation/read, and output Tokens by local day and model.
+- AGY review reconciliation: independent AGY review `agy-review-20260817-170528` returned `Revise` with three verified findings. The provider-catalog addition now runs once in SQLite schema v6 so a later Claude disable persists; the Today source summary pre-populates all four Token providers with zero; and unreadable Claude project directories are isolated instead of aborting the full scan. Each regression test failed before its fix and passed afterward.
+- Local fixed-basis review found one additional accessibility issue: the summary was nested under the heatmap's `role="img"`. The image role is now scoped to the calendar wrapper, leaving the current-day summary's native description-list semantics exposed; its focused assertion also failed before the fix and passed afterward.
+- The same local review found that `Path::is_dir()` would follow directory symlinks in the new Claude scanner. Recursion now uses `DirEntry::file_type()` and ignores symlinked directories; a Unix regression test covers a link back to the project root without executing the unsafe pre-fix loop.
+- Local evidence: 21 Claude transcript files contain 42 usage records; deduplication yields 12 completed requests across 4 sessions and 290,426 Tokens (`glm-5.2`).
+- Spotlight: GUI bundles now build under `target.noindex`; the previously indexed debug bundle was moved to the Trash, and Spotlight resolves only `/Applications/AI Quota Trends.app`.
+- Validation: the layout and three AGY-review regression assertions were observed failing before implementation and passing afterward; the symlink-loop check was added without executing the unsafe pre-fix recursion. Complete gates pass with 67 core tests, 11 Tauri tests, and 51 frontend tests; `just fmt`, `just check`, `just test`, `just build-gui`, and `git diff --check` pass.
+- Installed runtime: the final reviewed build is running from `/Applications/AI Quota Trends.app` as PID `65638`, with Codex app-server child PID `65644`. The installed executable matches the built executable at SHA-256 `07a5c969277a8609e2e419f2356a85ffb92f816c02b87ed73ec609a4357af395`, and `codesign --verify --deep --strict` passes. The immediately prior installation is retained at `/private/tmp/AI Quota Trends.app.backup-20260817-171927`.
+- Native visual boundary: CoreGraphics exposes current tray `CGWindowID 1694`, layer 5, at 338×500 points for PID `65638`. The prior window-specific capture returned only the opaque HUD backing layer without WebView content and was deleted immediately; no browser preview or unrelated screen region is accepted as evidence. Final composited summary ordering remains `Not verified` until the real popover content can be captured or directly confirmed by the user.
+
+final result: AGY-reviewed findings reconciled; implementation tested, built, installed, and source/runtime verified; native popover visual evidence Not verified
+
 ## AI Quota Trends product identity migration — 2026-08-12
 
 - Product identity changed to `AI Quota Trends`; installed bundle identifier is `dev.idaibin.ai-quota-trends` and executable is `ai-quota-trends`.
