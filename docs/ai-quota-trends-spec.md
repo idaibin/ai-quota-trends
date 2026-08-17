@@ -30,7 +30,7 @@ ai-quota-trends
 
 ## 1.1 产品定位
 
-AI Quota Trends 是一个 macOS 本地优先（Local-first）的多 AI 服务额度与 Token 使用仪表盘。当前持续采集 Codex 额度与 Token 活动，只读汇总 ZCode 本地 Token 记录，并通过已安装 CLI 的额度界面读取 Qoder 国内版和 Antigravity 当前额度。
+AI Quota Trends 是一个 macOS 本地优先（Local-first）的多 AI 服务额度与 Token 使用仪表盘。当前持续采集 Codex 额度与 Token 活动，只读汇总 ZCode 与 Claude CLI 本地 Token 记录，并通过已安装 CLI 的额度界面读取 Qoder 国内版和 Antigravity 当前额度。
 
 菜单栏标题仍固定使用 Codex 额度。弹出窗一次完整展示所有已启用工具，不提供切换器；Codex 展示持久化额度窗口，Qoder 国内版展示套餐与 Credit，Antigravity 展示两个共享模型池。ZCode 当前只展示已接入 Token 明细，不虚构账户额度。弹出窗不展示 Codex 趋势图。
 
@@ -659,7 +659,7 @@ locations. The provider catalog displays status and version only.
 The General group contains collection frequency, launch-at-login, menu-bar-only,
 and theme controls; the obsolete floating-window trend-range control is not shown.
 Models & Tools is a compact single-column catalog. Codex is the primary read-only
-source and ZCode/Qoder CN/Antigravity keep enable toggles.
+source and ZCode/Claude CLI/Qoder CN/Antigravity keep enable toggles.
 
 配置：
 

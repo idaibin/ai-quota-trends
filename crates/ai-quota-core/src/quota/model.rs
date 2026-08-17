@@ -97,6 +97,17 @@ impl AppSettings {
         self
     }
 
+    pub fn normalize_legacy_provider_catalog(mut self) -> Self {
+        let legacy_defaults =
+            [ProviderId::Codex, ProviderId::Zcode, ProviderId::QoderCn, ProviderId::Antigravity];
+        if self.enabled_provider_ids.len() == legacy_defaults.len()
+            && legacy_defaults.iter().all(|provider| self.enabled_provider_ids.contains(provider))
+        {
+            self.enabled_provider_ids.insert(2, ProviderId::Claude);
+        }
+        self
+    }
+
     pub fn validate(&self) -> Result<(), &'static str> {
         if !self.enabled_provider_ids.contains(&ProviderId::Codex) {
             return Err("Codex must remain enabled as the menu bar quota source");
@@ -156,10 +167,42 @@ mod tests {
         .unwrap();
         assert_eq!(settings.codex_path, "~/.volta/bin/codex");
         assert_eq!(settings.codex_path_override(), Some("~/.volta/bin/codex"));
-        assert_eq!(settings.enabled_provider_ids.len(), 4);
+        assert_eq!(settings.enabled_provider_ids.len(), 5);
+        assert!(settings.enabled_provider_ids.contains(&ProviderId::Claude));
         assert_eq!(settings.tray_history_hours, 24);
         let serialized = serde_json::to_string(&settings).unwrap();
         assert!(serialized.contains(r#""codexPath":"~/.volta/bin/codex""#));
+    }
+
+    #[test]
+    fn legacy_full_provider_catalog_enables_claude_without_overriding_user_toggles() {
+        let legacy = AppSettings {
+            enabled_provider_ids: vec![
+                ProviderId::Codex,
+                ProviderId::Zcode,
+                ProviderId::QoderCn,
+                ProviderId::Antigravity,
+            ],
+            ..AppSettings::default()
+        }
+        .normalize_legacy_provider_catalog();
+        assert_eq!(
+            legacy.enabled_provider_ids,
+            [
+                ProviderId::Codex,
+                ProviderId::Zcode,
+                ProviderId::Claude,
+                ProviderId::QoderCn,
+                ProviderId::Antigravity,
+            ]
+        );
+
+        let customized = AppSettings {
+            enabled_provider_ids: vec![ProviderId::Codex, ProviderId::Zcode],
+            ..AppSettings::default()
+        }
+        .normalize_legacy_provider_catalog();
+        assert_eq!(customized.enabled_provider_ids, [ProviderId::Codex, ProviderId::Zcode]);
     }
 
     #[test]

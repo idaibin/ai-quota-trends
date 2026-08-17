@@ -28,6 +28,16 @@ const providers: ProviderProbe[] = [
     supportNote: "已接入本地模型 Token 明细",
   },
   {
+    id: "claude",
+    displayName: "Claude CLI",
+    commandName: "claude",
+    executablePath: "/opt/homebrew/bin/claude",
+    version: "2.1.220",
+    status: "available",
+    quotaCollectionSupported: false,
+    supportNote: "已接入本地模型 Token 明细",
+  },
+  {
     id: "qoder-cn",
     displayName: "Qoder 国内版",
     commandName: "qoder",
@@ -63,7 +73,7 @@ describe("settings route contract", () => {
     expect(source).toContain("主题");
   });
 
-  it("renders the four providers as one ordered card list", () => {
+  it("renders the five providers as one ordered card list", () => {
     const markup = renderToStaticMarkup(
       createElement(ProviderCatalog, {
         providers,
@@ -73,7 +83,7 @@ describe("settings route contract", () => {
     );
 
     expect(markup).toContain('class="provider-grid"');
-    expect(markup.match(/class="provider-card"/g)).toHaveLength(4);
+    expect(markup.match(/class="provider-card"/g)).toHaveLength(5);
     expect(markup).toContain("已连接");
     expect(markup).not.toContain("provider-row__status");
     expect(markup).not.toContain("provider-card__path");
@@ -83,7 +93,8 @@ describe("settings route contract", () => {
       expect(markup).toContain(provider.supportNote);
     }
     expect(markup.indexOf("Codex")).toBeLessThan(markup.indexOf("ZCode"));
-    expect(markup.indexOf("ZCode")).toBeLessThan(markup.indexOf("Qoder 国内版"));
+    expect(markup.indexOf("ZCode")).toBeLessThan(markup.indexOf("Claude CLI"));
+    expect(markup.indexOf("Claude CLI")).toBeLessThan(markup.indexOf("Qoder 国内版"));
     expect(markup.indexOf("Qoder 国内版")).toBeLessThan(markup.indexOf("Antigravity"));
   });
 });

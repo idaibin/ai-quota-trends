@@ -39,22 +39,26 @@ and used only for Settings. The generated transparent PNG app mark under
   quota reads for enabled Qoder CN and Antigravity providers run on initial display, tray focus, and a five-minute fallback; an
   in-flight refresh keeps the current rows until its response atomically replaces
   them, while errors clear the stale rows. The popover does not render a quota trend chart.
-- Token activity: the borderless section below quota shows today's Token total at the upper right in the heatmap's brightest purple (`#713bc5` light, `#b47eea` dark) using tabular monospace digits, bottom-aligned with the calendar month labels. The section keeps 12px above that header, matching the 12px inset below the final heatmap row,
-  without a visible "今日 Token" label; the label remains available to assistive technology, and the
+- Token activity: the borderless section below quota groups today's Token total and its source breakdown in one summary above the history heatmap. The `今日 Token 来源` label and the total share one header row; the total uses the heatmap's brightest purple (`#713bc5` light, `#b47eea` dark) and tabular monospace digits. Provider rows follow directly beneath that header, then one separator introduces the calendar, so all month labels remain visible. The section keeps 12px above the summary, matching the 12px inset below the final heatmap row. The
   dashboard rebuilds this visible provider/model completed-request total from
   model rows, so storage-only account buckets are not rendered and no model rows
   means zero. A continuous 90-local-day `react-activity-calendar` heatmap fills missing days with zero and encodes completed-request total
   Tokens with one ordered purple sequential scale on a square-root basis: deep purple-gray at zero, then four levels with monotonically increasing purple brightness and saturation without fluorescent highlights.
   Hovering a day shows its date and provider subtotals, without repeating the daily Token total. The date uses a distinct header treatment. Provider rows align the provider name on the left and a split numeric value plus unit on the right; the numeric column uses tabular monospace digits while the unit occupies the fixed rightmost column. Each value and unit uses a separate readable ordered purple scale relative to that day's largest provider subtotal: higher values are brighter and lower values are darker, but the lowest tooltip level retains sufficient contrast against the opaque tooltip surface. The darker heatmap colors are not reused for tooltip text.
-  Provider groups keep the fixed Codex, ZCode, Qoder CN, and Antigravity order, and only providers
+  Provider groups keep the fixed Codex, ZCode, Claude CLI, Qoder CN, and Antigravity order, and only providers
   with a positive value for that day are shown; model identifiers are not displayed. When provider
   details exist, their subtotals reconcile to the daily total; otherwise the tooltip keeps an
-  explicit no-detail state. The Token section permits
+  explicit no-detail state. The compact two-column source grid within the `今日 Token 来源`
+  summary uses each model row's current-day total, so it shares the same period as the primary
+  metric and today's tooltip. Known Token-only providers such as Claude CLI and ZCode remain
+  visible with `0` when they have no completed request today. The Token section permits
   the tooltip to cross its section; the portal-rendered tooltip uses explicit tray colors and a bounded
   width with readable type and line height so it remains readable over the heatmap without an
   unnecessary scrollbar.
   The outer tray surface still clips to the native window radius. The heatmap also exposes a text
-  summary plus an offscreen structured list of active-day details that does not require pointer hover. The rolling-window phrase `最近 90 天` is not rendered as visible copy; month labels directly introduce the calendar grid.
+  summary plus an offscreen structured list of active-day details that does not require pointer hover.
+  Only the calendar graphic owns `role="img"`; the current-day total and provider `dl` remain outside
+  that role so assistive technology retains their native list semantics. The rolling-window phrase `最近 90 天` is not rendered as visible copy; month labels directly introduce the calendar grid.
 - The heatmap shows exactly the latest 90 contiguous local calendar days, including zero-filled days. Today's Token and heatmap
   intensity use the unified provider/model completed-request total Tokens; the tooltip does not repeat that daily total. Account totals remain data-only and are not
   exposed as an additional UI metric.
@@ -105,12 +109,12 @@ content insets, 6px dense text spacing, and 16px between Settings groups.
   discovered automatically by the same resolver used by the collector; its
   connection state and version are read-only status, never an editable setting, and
   executable paths stay internal rather than appearing in the cards.
-  A Models & Tools group lists the fixed Codex, ZCode, Qoder CN, and Antigravity
+  A Models & Tools group lists the fixed Codex, ZCode, Claude CLI, Qoder CN, and Antigravity
   catalog in one compact column with local version/probe status. Each card uses two
   non-overlapping rows: name/version plus the primary-source label or enable toggle,
   followed by one merged connection/capability sentence. Status icons and executable
-  paths are not shown. Codex is labelled as the persistent quota collector, ZCode as a
-  Token source, and Qoder CN/Antigravity as local CLI quota sources.
+  paths are not shown. Codex is labelled as the persistent quota collector, ZCode and
+  Claude CLI as Token sources, and Qoder CN/Antigravity as local CLI quota sources.
   Theme selection is a normal row in the General group. Compact Chinese-only
   groups cover general behavior and data storage. Data storage shows only the
   retention period and total disk usage;

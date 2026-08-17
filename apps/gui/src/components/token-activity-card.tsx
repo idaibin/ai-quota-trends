@@ -27,10 +27,26 @@ import type { ModelTokenActivity, TokenActivity, TokenUsageHistoryDay } from "..
 const HEATMAP_DAYS = 90;
 export const TOKEN_HEATMAP_BLOCK_SIZE = 20;
 export const TOKEN_HEATMAP_BLOCK_MARGIN = 2;
-const PROVIDER_ORDER = ["codex", "zcode", "qoder-cn", "antigravity"];
+export const TOKEN_MONTH_LABELS = [
+  "1月",
+  "2月",
+  "3月",
+  "4月",
+  "5月",
+  "6月",
+  "7月",
+  "8月",
+  "9月",
+  "10月",
+  "11月",
+  "12月",
+] as const;
+const PROVIDER_ORDER = ["codex", "zcode", "claude", "qoder-cn", "antigravity"];
+const TOKEN_SUMMARY_PROVIDER_ORDER = ["codex", "zcode", "claude", "antigravity"];
 const PROVIDER_NAMES: Record<string, string> = {
   codex: "Codex",
   zcode: "ZCode",
+  claude: "Claude CLI",
   "qoder-cn": "Qoder 国内版",
   antigravity: "Antigravity",
 };
@@ -153,6 +169,33 @@ export interface TokenTooltipDetails {
   date: string;
   providers: TokenTooltipProvider[];
 }
+
+export const tokenProviderTodayTotals = (models: ModelTokenActivity[]): TokenTooltipProvider[] => {
+  const providers = new Map<string, TokenTooltipProvider>(
+    TOKEN_SUMMARY_PROVIDER_ORDER.map((providerId) => [
+      providerId,
+      {
+        providerId,
+        name: PROVIDER_NAMES[providerId] ?? providerId,
+        tokens: 0,
+      },
+    ]),
+  );
+  for (const model of models) {
+    if (!TOKEN_SUMMARY_PROVIDER_ORDER.includes(model.providerId)) continue;
+    const tokens = Number.isFinite(model.today.totalTokens)
+      ? Math.max(0, model.today.totalTokens)
+      : 0;
+    const provider = providers.get(model.providerId) ?? {
+      providerId: model.providerId,
+      name: PROVIDER_NAMES[model.providerId] ?? model.providerId,
+      tokens: 0,
+    };
+    provider.tokens += tokens;
+    providers.set(model.providerId, provider);
+  }
+  return TOKEN_SUMMARY_PROVIDER_ORDER.map((providerId) => providers.get(providerId)!);
+};
 
 export const tokenTooltipDetails = (
   cell: TokenHeatmapCell,
@@ -312,7 +355,8 @@ export function TokenActivityCard({
   sectionRef?: Ref<HTMLElement>;
   appearance?: "light" | "dark";
 }) {
-  const cells = buildTokenHeatmap(activity.history, todayDay());
+  const currentDay = todayDay();
+  const cells = buildTokenHeatmap(activity.history, currentDay);
   const maximum = Math.max(0, ...cells.map((cell) => cell.totalTokens));
   const activeDays = cells.filter((cell) => cell.totalTokens > 0);
   const rangeSummary = activeDays.length
@@ -324,64 +368,66 @@ export function TokenActivityCard({
     count: cell.totalTokens,
     level: tokenHeatLevel(cell.totalTokens, maximum),
   }));
+  const providerTotals = tokenProviderTodayTotals(activity.models);
   return (
     <section ref={sectionRef} className="tray-token-section" aria-label="Token 使用统计">
-      <div className="tray-token-heatmap" role="img" aria-label={rangeSummary}>
-        <dl className="tray-token-metrics">
-          <div className="tray-token-metric tray-token-metric--primary">
-            <dt className="tray-token-metric-label">今日 Token</dt>
-            <dd>{formatTokenCount(activity.today.totalTokens)}</dd>
-          </div>
-        </dl>
-        <ActivityCalendar
-          className="tray-token-calendar"
-          colorScheme={appearance}
-          data={calendarData}
-          blockMargin={TOKEN_HEATMAP_BLOCK_MARGIN}
-          blockRadius={3}
-          blockSize={TOKEN_HEATMAP_BLOCK_SIZE}
-          fontSize={10}
-          labels={{
-            months: [
-              "1月",
-              "2月",
-              "3月",
-              "4月",
-              "5月",
-              "6月",
-              "7月",
-              "8月",
-              "9月",
-              "10月",
-              "11月",
-              "12月",
-            ],
-            weekdays: ["日", "一", "二", "三", "四", "五", "六"],
-          }}
-          maxLevel={4}
-          minLevel={0}
-          showColorLegend={false}
-          showTotalCount={false}
-          showWeekdayLabels={false}
-          theme={{
-            dark: [...TOKEN_HEATMAP_COLORS_DARK],
-            light: [...TOKEN_HEATMAP_COLORS_LIGHT],
-          }}
-          renderBlock={(block, activityDay) => {
-            const cell = cellsByDay.get(activityDay.date);
-            return cell ? (
-              <TokenActivityTooltip
-                details={tokenTooltipDetails(cell, activity.models)}
-                appearance={appearance}
-              >
-                {block}
-              </TokenActivityTooltip>
-            ) : (
-              block
-            );
-          }}
-          weekStart={0}
-        />
+      <div className="tray-token-heatmap">
+        <div className="tray-token-provider-summary">
+          <dl className="tray-token-metrics">
+            <div className="tray-token-metric tray-token-metric--primary">
+              <dt className="tray-token-metric-label">今日 Token 来源</dt>
+              <dd>{formatTokenCount(activity.today.totalTokens)}</dd>
+            </div>
+          </dl>
+          {providerTotals.length > 0 && (
+            <dl className="tray-token-provider-totals" aria-label="今日 Token 来源">
+              {providerTotals.map((provider) => (
+                <div className="tray-token-provider-total" key={provider.providerId}>
+                  <dt>{provider.name}</dt>
+                  <dd>{formatTokenCount(provider.tokens)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+        <div className="tray-token-calendar-graphic" role="img" aria-label={rangeSummary}>
+          <ActivityCalendar
+            className="tray-token-calendar"
+            colorScheme={appearance}
+            data={calendarData}
+            blockMargin={TOKEN_HEATMAP_BLOCK_MARGIN}
+            blockRadius={3}
+            blockSize={TOKEN_HEATMAP_BLOCK_SIZE}
+            fontSize={10}
+            labels={{
+              months: [...TOKEN_MONTH_LABELS],
+              weekdays: ["日", "一", "二", "三", "四", "五", "六"],
+            }}
+            maxLevel={4}
+            minLevel={0}
+            showColorLegend={false}
+            showTotalCount={false}
+            showWeekdayLabels={false}
+            theme={{
+              dark: [...TOKEN_HEATMAP_COLORS_DARK],
+              light: [...TOKEN_HEATMAP_COLORS_LIGHT],
+            }}
+            renderBlock={(block, activityDay) => {
+              const cell = cellsByDay.get(activityDay.date);
+              return cell ? (
+                <TokenActivityTooltip
+                  details={tokenTooltipDetails(cell, activity.models)}
+                  appearance={appearance}
+                >
+                  {block}
+                </TokenActivityTooltip>
+              ) : (
+                block
+              );
+            }}
+            weekStart={0}
+          />
+        </div>
       </div>
       <ul className="tray-token-accessible-details" aria-label="每日 Token 明细">
         {activeDays.map((cell) => (

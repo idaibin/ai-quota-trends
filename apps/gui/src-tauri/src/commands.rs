@@ -154,6 +154,14 @@ fn dashboard(state: &AppState) -> Result<DashboardData, String> {
     {
         additional_models.extend(zcode_models);
     }
+    if enabled_provider_ids.contains(&ai_quota_core::ProviderId::Claude)
+        && let Ok(claude_models) = ai_quota_core::read_claude_model_activity(
+            &today.format("%Y-%m-%d").to_string(),
+            &(today - Duration::days(89)).format("%Y-%m-%d").to_string(),
+        )
+    {
+        additional_models.extend(claude_models);
+    }
     if enabled_provider_ids.contains(&ai_quota_core::ProviderId::Antigravity)
         && let Ok(antigravity_models) = ai_quota_core::read_antigravity_model_activity(
             &today.format("%Y-%m-%d").to_string(),

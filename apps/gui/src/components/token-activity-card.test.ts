@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { TokenActivity } from "../types";
 import {
   TokenActivityCard,
+  TOKEN_MONTH_LABELS,
   TOKEN_HEATMAP_BLOCK_MARGIN,
   TOKEN_HEATMAP_BLOCK_SIZE,
   TOKEN_HEATMAP_COLORS,
@@ -14,11 +15,29 @@ import {
   formatTokenCountParts,
   formatTokenTooltip,
   tokenHeatLevel,
+  tokenProviderTodayTotals,
   tokenTooltipColor,
   tokenTooltipDetails,
 } from "./token-activity-card";
 
 describe("token activity heatmap", () => {
+  it("keeps every month label when the total moves into the provider summary", () => {
+    expect(TOKEN_MONTH_LABELS).toEqual([
+      "1月",
+      "2月",
+      "3月",
+      "4月",
+      "5月",
+      "6月",
+      "7月",
+      "8月",
+      "9月",
+      "10月",
+      "11月",
+      "12月",
+    ]);
+  });
+
   it("builds exactly the latest 90 calendar days", () => {
     const cells = buildTokenHeatmap(
       [
@@ -172,7 +191,7 @@ describe("token activity heatmap", () => {
   it("uses completed-request total Tokens and reconciles provider totals", () => {
     const activity: TokenActivity = {
       today: {
-        totalTokens: 511_000_000,
+        totalTokens: 518_000_000,
         inputTokens: 1_194_561_384,
         cachedInputTokens: 1_164_803_776,
         nonCachedInputTokens: 29_757_608,
@@ -185,10 +204,10 @@ describe("token activity heatmap", () => {
     };
     const markup = renderToStaticMarkup(createElement(TokenActivityCard, { activity }));
 
-    expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token</dt>');
-    expect(markup).toContain("5.11亿");
+    expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token 来源</dt>');
+    expect(markup).toContain("5.18亿");
     expect(markup).toMatch(
-      /tray-token-heatmap[\s\S]*?tray-token-metrics[\s\S]*?5\.11亿[\s\S]*?tray-token-calendar/,
+      /tray-token-heatmap[\s\S]*?tray-token-provider-summary[\s\S]*?今日 Token 来源[\s\S]*?5\.18亿[\s\S]*?tray-token-calendar/,
     );
     expect(markup).not.toContain("最近 90 天");
     expect(markup).not.toContain(">会话<");
@@ -200,13 +219,16 @@ describe("token activity heatmap", () => {
     expect(markup).toContain("react-activity-calendar");
     expect(markup).toContain("tray-token-calendar");
     expect(markup).toContain('aria-label="每日 Token 明细"');
+    expect(markup.indexOf("tray-token-provider-summary")).toBeLessThan(
+      markup.indexOf('role="img"'),
+    );
     expect(markup).not.toContain("tray-card");
     expect(markup).not.toContain("tray-token-card");
 
     const details = tokenTooltipDetails(
       {
         day: "2026-07-22",
-        totalTokens: 511_000_000,
+        totalTokens: 518_000_000,
         inputTokens: 1_194_561_384,
         cachedInputTokens: 1_164_803_776,
         nonCachedInputTokens: 29_757_608,
@@ -262,6 +284,19 @@ describe("token activity heatmap", () => {
           today: activity.today,
           history: [],
         },
+        {
+          providerId: "claude",
+          modelId: "claude-sonnet",
+          displayName: "Claude CLI · claude-sonnet",
+          today: activity.today,
+          history: [
+            {
+              day: "2026-07-22",
+              ...activity.today,
+              totalTokens: 7_000_000,
+            },
+          ],
+        },
       ],
     );
 
@@ -278,10 +313,15 @@ describe("token activity heatmap", () => {
           name: "ZCode",
           tokens: 211_000_000,
         },
+        {
+          providerId: "claude",
+          name: "Claude CLI",
+          tokens: 7_000_000,
+        },
       ],
     });
     expect(details.providers.reduce((total, provider) => total + provider.tokens, 0)).toBe(
-      511_000_000,
+      518_000_000,
     );
     expect(1_164_803_776 + 29_757_608).toBe(1_194_561_384);
   });
@@ -314,6 +354,70 @@ describe("token activity heatmap", () => {
     expect(formatTokenTooltip(cell)).toBe("7月22日\n暂无明细");
   });
 
+  it("shows today's provider totals and keeps an idle Claude CLI visible as zero", () => {
+    const usage = {
+      totalTokens: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      nonCachedInputTokens: 0,
+      sessionCount: 0,
+      callCount: 0,
+    };
+    const activity: TokenActivity = {
+      today: { ...usage, totalTokens: 100_000_000 },
+      history: [],
+      models: [
+        {
+          providerId: "codex",
+          modelId: "gpt",
+          displayName: "Codex · gpt",
+          today: { ...usage, totalTokens: 100_000_000 },
+          history: [{ day: "2026-08-09", ...usage, totalTokens: 100_000_000 }],
+        },
+        {
+          providerId: "claude",
+          modelId: "glm-5.2",
+          displayName: "Claude CLI · glm-5.2",
+          today: usage,
+          history: [
+            { day: "2026-07-21", ...usage, totalTokens: 221_712 },
+            { day: "2026-08-09", ...usage, totalTokens: 68_714 },
+          ],
+        },
+      ],
+      lastScannedAt: 1,
+    };
+
+    const providerTotals = tokenProviderTodayTotals(activity.models);
+    expect(providerTotals).toEqual([
+      { providerId: "codex", name: "Codex", tokens: 100_000_000 },
+      { providerId: "zcode", name: "ZCode", tokens: 0 },
+      { providerId: "claude", name: "Claude CLI", tokens: 0 },
+      { providerId: "antigravity", name: "Antigravity", tokens: 0 },
+    ]);
+    expect(providerTotals.reduce((total, provider) => total + provider.tokens, 0)).toBe(
+      activity.today.totalTokens,
+    );
+    const markup = renderToStaticMarkup(createElement(TokenActivityCard, { activity }));
+    expect(markup.match(/今日 Token 来源/g)).toHaveLength(2);
+    expect(markup).toContain('aria-label="今日 Token 来源"');
+    expect(markup).toContain("Claude CLI");
+    expect(markup).toMatch(/Claude CLI<\/dt><dd>0<\/dd>/);
+    expect(markup).not.toContain("29万");
+    expect(markup).toMatch(
+      /tray-token-provider-summary[\s\S]*?今日 Token 来源[\s\S]*?1\.00亿[\s\S]*?tray-token-provider-totals[\s\S]*?Codex[\s\S]*?Claude CLI[\s\S]*?tray-token-calendar/,
+    );
+  });
+
+  it("keeps every known Token source visible before it has model history", () => {
+    expect(tokenProviderTodayTotals([])).toEqual([
+      { providerId: "codex", name: "Codex", tokens: 0 },
+      { providerId: "zcode", name: "ZCode", tokens: 0 },
+      { providerId: "claude", name: "Claude CLI", tokens: 0 },
+      { providerId: "antigravity", name: "Antigravity", tokens: 0 },
+    ]);
+  });
+
   it("keeps provider summaries in the fixed catalog order", () => {
     const cell = {
       day: "2026-07-22",
@@ -337,8 +441,9 @@ describe("token activity heatmap", () => {
     const models = [
       model("antigravity", 20),
       model("qoder-cn", 30),
+      model("claude", 5),
       model("zcode", 10),
-      model("codex", 40),
+      model("codex", 35),
       model("unknown-provider", 999),
     ];
     const details = tokenTooltipDetails(cell, models);
@@ -346,12 +451,13 @@ describe("token activity heatmap", () => {
     expect(details.providers.map((provider) => provider.providerId)).toEqual([
       "codex",
       "zcode",
+      "claude",
       "qoder-cn",
       "antigravity",
     ]);
     expect(details.providers.reduce((total, provider) => total + provider.tokens, 0)).toBe(100);
     expect(formatTokenTooltip(cell, models)).toBe(
-      "7月22日\nCodex  40\nZCode  10\nQoder 国内版  30\nAntigravity  20",
+      "7月22日\nCodex  35\nZCode  10\nClaude CLI  5\nQoder 国内版  30\nAntigravity  20",
     );
     expect(formatTokenTooltip(cell, models)).not.toMatch(/(?:^|\n)Token\b/);
   });

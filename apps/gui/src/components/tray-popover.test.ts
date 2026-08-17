@@ -167,7 +167,7 @@ describe("tray quota overview", () => {
     expect(renderRemainingPercent(5.6)).toContain("tray-quota-status--warning");
   });
 
-  it("shows the fixed four-tool catalog without a selector or Codex trend chart", () => {
+  it("shows the fixed five-tool catalog without a selector or Codex trend chart", () => {
     const now = Math.floor(Date.now() / 1_000);
     const markup = renderToStaticMarkup(
       createElement(TrayPopover, {
@@ -207,6 +207,16 @@ describe("tray quota overview", () => {
             status: "available",
             quotaCollectionSupported: false,
             supportNote: "额度接口尚未验证",
+          },
+          {
+            id: "claude",
+            displayName: "Claude CLI",
+            commandName: "claude",
+            executablePath: "/opt/homebrew/bin/claude",
+            version: "2.1.220",
+            status: "available",
+            quotaCollectionSupported: false,
+            supportNote: "本地 Token 明细已接入",
           },
           {
             id: "qoder-cn",
@@ -310,7 +320,7 @@ describe("tray quota overview", () => {
       }),
     );
 
-    expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token</dt>');
+    expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token 来源</dt>');
     expect(markup).toContain('aria-label="Codex 额度"');
     expect(markup).toContain('aria-label="Qoder 国内版 额度"');
     expect(markup).toContain('aria-label="AGY · Google 额度"');
@@ -334,8 +344,9 @@ describe("tray quota overview", () => {
     );
     expect(markup).toContain("Codex");
     expect(markup).not.toContain('aria-label="ZCode 额度"');
+    expect(markup).not.toContain('aria-label="Claude CLI 额度"');
     expect(markup).toContain("Qoder 国内版");
-    expect(markup).not.toContain("Antigravity");
+    expect(markup).not.toContain('aria-label="Antigravity 额度"');
     expect(markup).not.toContain(">剩余额度<");
     expect(markup).not.toContain("额度暂不可用");
     expect(markup).not.toContain("本地 Token 明细已接入");
@@ -523,6 +534,6 @@ describe("tray quota overview", () => {
 
     expect(markup).not.toContain("tray-usage-stack");
     expect(markup).not.toContain("tray-section-divider");
-    expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token</dt>');
+    expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token 来源</dt>');
   });
 });

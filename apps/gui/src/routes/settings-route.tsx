@@ -181,7 +181,7 @@ function ProviderCard({
     ? `已连接 · ${
         provider.quotaCollectionSupported
           ? "额度已接入"
-          : provider.id === "zcode"
+          : provider.id === "zcode" || provider.id === "claude"
             ? "Token 已接入"
             : "工具已识别"
       } · ${provider.supportNote}`

@@ -125,7 +125,7 @@ export interface AppSettings {
   theme: ThemeMode;
 }
 
-export type ProviderId = "codex" | "zcode" | "qoder-cn" | "antigravity";
+export type ProviderId = "codex" | "zcode" | "claude" | "qoder-cn" | "antigravity";
 
 export interface ProviderProbe {
   id: ProviderId;

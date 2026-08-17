@@ -29,6 +29,9 @@ internal persisted tray trend-range field retained for compatibility. The curren
 Settings surface does not expose that range; older settings rows still default it
 to 24 hours during deserialization. A legacy non-empty `codexPath` is also
 serialized and retained for the collector, but is not shown or edited by Settings.
+Schema v6 performs the Claude provider-catalog addition once for the exact legacy
+four-provider default. Later settings reads do not repeat that migration, so explicitly
+disabling Claude remains persistent.
 
 `token_usage_sources` fingerprints local Codex session logs so unchanged files can
 be skipped. `token_usage_daily` stores one derived aggregate per source session and
@@ -52,8 +55,12 @@ source, local day, provider, and model. It preserves the aggregate Token tables
 while allowing the popover heatmap to split a day's completed-request total Tokens by model.
 ZCode model usage is not copied into this database: the app opens
 `~/.zcode/cli/db/db.sqlite` read-only and groups completed `model_usage` rows by
-local day and model. Antigravity CLI Token usage is likewise not copied into this
-database: the app opens each local
+local day and model. Claude CLI usage is read from `~/.claude/projects/**/*.jsonl`;
+only timestamp, session/message identity, model, and usage fields are deserialized,
+duplicate streamed records are collapsed before local-day aggregation, and unreadable
+project subdirectories are skipped without discarding readable projects. Directory
+symlinks are ignored rather than recursively traversed. Antigravity
+CLI Token usage is likewise not copied into this database: the app opens each local
 `~/.gemini/antigravity-cli/conversations/*.db` file read-only and decodes only the
 model, timestamp, response ID, and Token buckets from `gen_metadata` protobuf
 blobs. `GEMINI_CLI_HOME` is honored when configured. Duplicate response IDs are

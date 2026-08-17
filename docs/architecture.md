@@ -13,8 +13,8 @@ until this gate passes. See `feasibility-poc.md`.
 AI Quota Trends is a multi-provider quota and Token usage Client/Tauri repository.
 
 The provider catalog is deliberately fixed. Codex owns the persistent quota collector.
-ZCode and Antigravity CLI contribute read-only model-level Token activity from their
-local usage databases. Qoder CN and Antigravity expose their account quota through their
+ZCode, Claude CLI, and Antigravity CLI contribute read-only model-level Token activity
+from local usage metadata. Qoder CN and Antigravity expose their account quota through their
 installed CLI usage screens; the app reads those screens on demand through a bounded PTY
 and does not read provider credentials, send model prompts, or persist those observations
 as trend snapshots. Antigravity Token collection separately reads only the model, usage,
@@ -55,7 +55,11 @@ parent's history at the beginning of the file; those inherited records are exclu
 until the spawned session's own UUIDv7 turn starts. File size, modification time,
 and the parser version prevent unchanged logs from being rescanned while still
 forcing a rebuild when aggregation semantics change. Prompt and response content is
-never stored by this application.
+never stored by this application. Claude CLI usage is deduplicated by session plus
+assistant message ID before its uncached input, cache creation, cache read, and output
+Tokens are aggregated by local day and model. Unreadable Claude project directories
+are isolated so readable transcript directories continue to contribute activity;
+directory symlinks are not followed, preventing recursive traversal loops.
 
 Each daily activity record keeps completed-request `total_tokens` and locally
 observed `input_tokens` independent. The tray's visible Token total and heatmap

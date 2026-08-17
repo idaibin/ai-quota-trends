@@ -73,6 +73,8 @@ impl Database {
     }
 
     fn migrate(&mut self) -> Result<()> {
+        let previous_schema_version =
+            self.connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?;
         self.connection.execute_batch(
             "BEGIN;
             CREATE TABLE IF NOT EXISTS quota_snapshots(
@@ -145,7 +147,6 @@ impl Database {
               day TEXT PRIMARY KEY,
               tokens INTEGER NOT NULL
             );
-            PRAGMA user_version = 5;
             COMMIT;",
         )?;
         let has_model_total = self.connection.query_row(
@@ -159,7 +160,32 @@ impl Database {
                 [],
             )?;
         }
-        self.connection.pragma_update(None, "user_version", 5)?;
+        if previous_schema_version < 6 {
+            self.migrate_legacy_provider_catalog()?;
+        }
+        self.connection.pragma_update(None, "user_version", 6)?;
+        Ok(())
+    }
+
+    fn migrate_legacy_provider_catalog(&self) -> Result<()> {
+        let value = self
+            .connection
+            .query_row("SELECT value FROM settings WHERE key = 'app'", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .optional()?;
+        let Some(value) = value else { return Ok(()) };
+        let settings = serde_json::from_str::<AppSettings>(&value)
+            .context("invalid stored app settings during provider catalog migration")?;
+        let previous_provider_ids = settings.enabled_provider_ids.clone();
+        let settings = settings.normalize_legacy_provider_catalog();
+        if settings.enabled_provider_ids == previous_provider_ids {
+            return Ok(());
+        }
+        self.connection.execute(
+            "UPDATE settings SET value = ?1 WHERE key = 'app'",
+            [serde_json::to_string(&settings)?],
+        )?;
         Ok(())
     }
 
@@ -866,6 +892,7 @@ fn same_displayed_usage(previous: &[QuotaWindow], current: &[QuotaWindow]) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::ProviderId;
 
     fn snapshot(at: i64, used: f64) -> QuotaSnapshot {
         QuotaSnapshot {
@@ -1032,6 +1059,50 @@ mod tests {
     }
 
     #[test]
+    fn migrates_the_legacy_provider_catalog_once_and_preserves_a_later_claude_disable() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("quota.db");
+        let legacy = AppSettings {
+            enabled_provider_ids: vec![
+                ProviderId::Codex,
+                ProviderId::Zcode,
+                ProviderId::QoderCn,
+                ProviderId::Antigravity,
+            ],
+            ..AppSettings::default()
+        };
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 PRAGMA user_version = 5;",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO settings(key, value) VALUES('app', ?1)",
+                [serde_json::to_string(&legacy).unwrap()],
+            )
+            .unwrap();
+        drop(connection);
+
+        let database = Database::open(&path).unwrap();
+        let migrated = database.load_settings().unwrap();
+        assert!(migrated.enabled_provider_ids.contains(&ProviderId::Claude));
+
+        let disabled =
+            AppSettings { enabled_provider_ids: legacy.enabled_provider_ids.clone(), ..migrated };
+        database.save_settings(&disabled).unwrap();
+        drop(database);
+
+        let reopened = Database::open(&path).unwrap();
+        assert_eq!(
+            reopened.load_settings().unwrap().enabled_provider_ids,
+            legacy.enabled_provider_ids
+        );
+    }
+
+    #[test]
     fn settings_save_without_ui_path_keeps_the_legacy_codex_override() {
         let database = Database::open_in_memory().unwrap();
         let legacy: AppSettings = serde_json::from_str(
@@ -1068,7 +1139,7 @@ mod tests {
                 .connection
                 .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
                 .unwrap(),
-            5
+            6
         );
         assert_eq!(
             database.token_activity("2026-07-22", "2025-07-18").unwrap(),

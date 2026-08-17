@@ -1593,26 +1593,22 @@ select {
   overflow: visible;
 }
 .tray-token-metrics {
-  position: absolute;
-  z-index: 1;
-  top: -7px;
-  right: 4px;
+  width: 100%;
   margin: 0;
   padding: 0;
 }
 .tray-token-metric {
+  display: flex;
   min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
 }
 .tray-token-metric-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  color: var(--tray-muted);
+  font-size: 11px;
+  font-weight: 600;
   white-space: nowrap;
-  border: 0;
 }
 .tray-token-metric dd {
   overflow: hidden;
@@ -1633,6 +1629,11 @@ select {
   overflow: visible;
   min-width: 0;
 }
+.tray-token-calendar-graphic {
+  display: grid;
+  width: 100%;
+  justify-items: center;
+}
 .tray-token-calendar {
   color: var(--tray-muted);
   font-family: inherit;
@@ -1648,6 +1649,42 @@ select {
 }
 .tray-token-calendar .react-activity-calendar__legend-month {
   font-weight: 500;
+}
+.tray-token-provider-summary {
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--tray-track);
+}
+.tray-token-provider-totals {
+  display: grid;
+  margin: 8px 0 0;
+  padding: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+}
+.tray-token-provider-total {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tray-token-provider-total dt {
+  overflow: hidden;
+  color: var(--tray-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-token-provider-total dd {
+  margin: 0;
+  color: var(--tray-token-accent);
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .tray-token-tooltip {
   width: max-content;

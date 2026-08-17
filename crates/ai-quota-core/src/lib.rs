@@ -15,7 +15,8 @@ pub use feasibility::{
 pub use providers::{
     ProviderId, ProviderProbe, ProviderProbeStatus, ProviderQuota, ProviderQuotaPool,
     ProviderQuotaStatus, probe_providers, probe_providers_with_codex_path,
-    read_antigravity_model_activity, read_provider_quotas, read_zcode_model_activity,
+    read_antigravity_model_activity, read_claude_model_activity, read_provider_quotas,
+    read_zcode_model_activity,
 };
 pub use quota::{
     AlertRecord, AlertSeverity, AlertStatus, AlertType, AppSettings, Pace, PaceStatus,

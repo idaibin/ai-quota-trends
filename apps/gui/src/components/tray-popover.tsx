@@ -34,6 +34,16 @@ const providerFallbacks: ProviderProbe[] = [
     supportNote: "本地 Token 明细已接入",
   },
   {
+    id: "claude",
+    displayName: "Claude CLI",
+    commandName: "claude",
+    executablePath: null,
+    version: null,
+    status: "missing",
+    quotaCollectionSupported: false,
+    supportNote: "本地 Token 明细已接入",
+  },
+  {
     id: "qoder-cn",
     displayName: "Qoder 国内版",
     commandName: "qoder",
@@ -54,7 +64,7 @@ const providerFallbacks: ProviderProbe[] = [
     supportNote: "正在读取本地额度",
   },
 ];
-const PROVIDER_ORDER: ProviderId[] = ["codex", "zcode", "qoder-cn", "antigravity"];
+const PROVIDER_ORDER: ProviderId[] = ["codex", "zcode", "claude", "qoder-cn", "antigravity"];
 
 const formatCompactDuration = (totalMinutes: number) => {
   if (totalMinutes >= 24 * 60) {

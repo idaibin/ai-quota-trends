@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
+    io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Mutex, OnceLock},
@@ -12,6 +13,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, FixedOffset};
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use crate::{
     ModelTokenActivity, TokenUsageDay, TokenUsageHistoryDay, codex::resolve_codex_program,
@@ -22,12 +24,19 @@ use crate::{
 pub enum ProviderId {
     Codex,
     Zcode,
+    Claude,
     QoderCn,
     Antigravity,
 }
 
 pub fn default_enabled_provider_ids() -> Vec<ProviderId> {
-    vec![ProviderId::Codex, ProviderId::Zcode, ProviderId::QoderCn, ProviderId::Antigravity]
+    vec![
+        ProviderId::Codex,
+        ProviderId::Zcode,
+        ProviderId::Claude,
+        ProviderId::QoderCn,
+        ProviderId::Antigravity,
+    ]
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,7 +108,7 @@ struct ProviderDescriptor {
     support_note: &'static str,
 }
 
-const PROVIDERS: [ProviderDescriptor; 4] = [
+const PROVIDERS: [ProviderDescriptor; 5] = [
     ProviderDescriptor {
         id: ProviderId::Codex,
         display_name: "Codex",
@@ -115,6 +124,15 @@ const PROVIDERS: [ProviderDescriptor; 4] = [
         command_name: "zcode",
         home_candidates: &[".local/bin/zcode"],
         version_args: &["version"],
+        quota_collection_supported: false,
+        support_note: "已接入本地模型 Token 明细",
+    },
+    ProviderDescriptor {
+        id: ProviderId::Claude,
+        display_name: "Claude CLI",
+        command_name: "claude",
+        home_candidates: &[".local/bin/claude", ".volta/bin/claude"],
+        version_args: &["--version"],
         quota_collection_supported: false,
         support_note: "已接入本地模型 Token 明细",
     },
@@ -192,7 +210,7 @@ fn provider_capability(
                 match descriptor.id {
                     ProviderId::QoderCn => "额度采集需要本机 tmux；当前仅识别 Qoder CLI",
                     ProviderId::Antigravity => "额度采集需要本机 tmux；当前仅识别 Antigravity CLI",
-                    ProviderId::Codex | ProviderId::Zcode => unreachable!(),
+                    ProviderId::Codex | ProviderId::Zcode | ProviderId::Claude => unreachable!(),
                 },
             );
         }
@@ -211,7 +229,7 @@ pub fn read_provider_quotas(probes: &[ProviderProbe]) -> Vec<ProviderQuota> {
         .filter_map(|probe| match probe.id {
             ProviderId::QoderCn => Some(read_qoder_quota(probe)),
             ProviderId::Antigravity => Some(read_antigravity_quota(probe)),
-            ProviderId::Codex | ProviderId::Zcode => None,
+            ProviderId::Codex | ProviderId::Zcode | ProviderId::Claude => None,
         })
         .collect()
 }
@@ -655,6 +673,246 @@ pub fn read_zcode_model_activity(today: &str, since: &str) -> Result<Vec<ModelTo
     read_zcode_model_activity_from(&path, today, since)
 }
 
+/// Read Claude Code's local per-request usage metadata without retaining
+/// prompt or response content.
+pub fn read_claude_model_activity(today: &str, since: &str) -> Result<Vec<ModelTokenActivity>> {
+    let root = if let Some(root) = env::var_os("CLAUDE_CONFIG_DIR") {
+        PathBuf::from(root)
+    } else if let Some(home) = env::var_os("HOME") {
+        PathBuf::from(home).join(".claude")
+    } else {
+        return Ok(Vec::new());
+    };
+    let path = root.join("projects");
+    if !path.is_dir() {
+        return Ok(Vec::new());
+    }
+    const CACHE_TTL: Duration = Duration::from_secs(30);
+    static CACHE: OnceLock<Mutex<Option<ClaudeActivityCache>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(cached) = cache.lock()
+        && let Some(cached) = cached.as_ref()
+        && cached.directory == path
+        && cached.today == today
+        && cached.since == since
+        && cached.cached_at.elapsed() < CACHE_TTL
+    {
+        return Ok(cached.models.clone());
+    }
+
+    let models = read_claude_model_activity_from_dir(&path, today, since)?;
+    if let Ok(mut cached) = cache.lock() {
+        *cached = Some(ClaudeActivityCache {
+            directory: path,
+            today: today.to_owned(),
+            since: since.to_owned(),
+            cached_at: Instant::now(),
+            models: models.clone(),
+        });
+    }
+    Ok(models)
+}
+
+struct ClaudeActivityCache {
+    directory: PathBuf,
+    today: String,
+    since: String,
+    cached_at: Instant,
+    models: Vec<ModelTokenActivity>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeTranscriptRecord {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    timestamp: Option<String>,
+    #[serde(rename = "sessionId")]
+    session_id: Option<String>,
+    uuid: Option<String>,
+    message: Option<ClaudeTranscriptMessage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeTranscriptMessage {
+    id: Option<String>,
+    model: Option<String>,
+    usage: Option<ClaudeTranscriptUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ClaudeTranscriptUsage {
+    #[serde(default)]
+    input_tokens: u64,
+    #[serde(default)]
+    cache_creation_input_tokens: u64,
+    #[serde(default)]
+    cache_read_input_tokens: u64,
+    #[serde(default)]
+    output_tokens: u64,
+}
+
+struct ClaudeUsageRecord {
+    timestamp_ms: i64,
+    day: String,
+    session_id: String,
+    model_id: String,
+    usage: TokenUsageDay,
+}
+
+#[derive(Default)]
+struct ClaudeUsageAggregate {
+    usage: TokenUsageDay,
+    sessions: HashSet<String>,
+}
+
+fn read_claude_model_activity_from_dir(
+    directory: &Path,
+    today: &str,
+    since: &str,
+) -> Result<Vec<ModelTokenActivity>> {
+    let mut files = Vec::new();
+    collect_claude_transcripts(directory, &mut files)?;
+    let mut requests = HashMap::<String, ClaudeUsageRecord>::new();
+
+    for path in files {
+        let Ok(file) = fs::File::open(&path) else { continue };
+        let fallback_session =
+            path.file_stem().and_then(|stem| stem.to_str()).unwrap_or("unknown").to_owned();
+        for (line_index, line) in BufReader::new(file).lines().enumerate() {
+            let Ok(line) = line else { continue };
+            let Ok(record) = serde_json::from_str::<ClaudeTranscriptRecord>(&line) else {
+                continue;
+            };
+            if record.kind.as_deref() != Some("assistant") {
+                continue;
+            }
+            let Some(message) = record.message else { continue };
+            let Some(usage) = message.usage else { continue };
+            let Some(model_id) =
+                message.model.filter(|model| !model.trim().is_empty() && model != "<synthetic>")
+            else {
+                continue;
+            };
+            let cached_input =
+                usage.cache_creation_input_tokens.saturating_add(usage.cache_read_input_tokens);
+            let input_tokens = usage.input_tokens.saturating_add(cached_input);
+            let total_tokens = input_tokens.saturating_add(usage.output_tokens);
+            if total_tokens == 0 {
+                continue;
+            }
+            let Some(timestamp) = record
+                .timestamp
+                .as_deref()
+                .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+            else {
+                continue;
+            };
+            let local_timestamp = timestamp.with_timezone(&chrono::Local);
+            let day = local_timestamp.format("%Y-%m-%d").to_string();
+            if day.as_str() < since {
+                continue;
+            }
+            let session_id = record
+                .session_id
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| fallback_session.clone());
+            let request_id = message
+                .id
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| record.uuid.filter(|value| !value.trim().is_empty()))
+                .unwrap_or_else(|| format!("{}:{line_index}", path.display()));
+            let key = format!("{session_id}\0{request_id}");
+            let candidate = ClaudeUsageRecord {
+                timestamp_ms: local_timestamp.timestamp_millis(),
+                day,
+                session_id,
+                model_id,
+                usage: TokenUsageDay {
+                    total_tokens,
+                    input_tokens,
+                    cached_input_tokens: cached_input,
+                    non_cached_input_tokens: usage.input_tokens,
+                    session_count: 0,
+                    call_count: 1,
+                },
+            };
+            match requests.entry(key) {
+                std::collections::hash_map::Entry::Occupied(mut entry)
+                    if candidate.timestamp_ms >= entry.get().timestamp_ms =>
+                {
+                    entry.insert(candidate);
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(candidate);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut daily = BTreeMap::<(String, String), ClaudeUsageAggregate>::new();
+    for record in requests.into_values() {
+        let aggregate = daily.entry((record.model_id, record.day)).or_default();
+        aggregate.usage.total_tokens =
+            aggregate.usage.total_tokens.saturating_add(record.usage.total_tokens);
+        aggregate.usage.input_tokens =
+            aggregate.usage.input_tokens.saturating_add(record.usage.input_tokens);
+        aggregate.usage.cached_input_tokens =
+            aggregate.usage.cached_input_tokens.saturating_add(record.usage.cached_input_tokens);
+        aggregate.usage.non_cached_input_tokens = aggregate
+            .usage
+            .non_cached_input_tokens
+            .saturating_add(record.usage.non_cached_input_tokens);
+        aggregate.usage.call_count = aggregate.usage.call_count.saturating_add(1);
+        aggregate.sessions.insert(record.session_id);
+    }
+
+    let mut histories = BTreeMap::<String, Vec<TokenUsageHistoryDay>>::new();
+    for ((model_id, day), mut aggregate) in daily {
+        aggregate.usage.session_count = aggregate.sessions.len() as u64;
+        histories
+            .entry(model_id)
+            .or_default()
+            .push(TokenUsageHistoryDay { day, usage: aggregate.usage });
+    }
+    Ok(histories
+        .into_iter()
+        .map(|(model_id, history)| ModelTokenActivity {
+            provider_id: "claude".to_owned(),
+            display_name: format!("Claude CLI · {model_id}"),
+            today: history
+                .iter()
+                .find(|usage| usage.day == today)
+                .map(|usage| usage.usage)
+                .unwrap_or_default(),
+            model_id,
+            history,
+        })
+        .collect())
+}
+
+fn collect_claude_transcripts(directory: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) => {
+            warn!(%error, directory = %directory.display(), "skipping unreadable Claude transcript directory");
+            return Ok(());
+        }
+    };
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else { continue };
+        let path = entry.path();
+        if file_type.is_dir() {
+            collect_claude_transcripts(&path, files)?;
+        } else if file_type.is_file()
+            && path.extension().and_then(|extension| extension.to_str()) == Some("jsonl")
+        {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
 /// Read AGY CLI's locally persisted per-generation Token metadata.
 ///
 /// AGY stores each conversation as a SQLite database under
@@ -1055,11 +1313,18 @@ fn resolve_executable(command_name: &str, home_candidates: &[&str]) -> Option<Pa
     {
         return Some(path);
     }
-    env::var_os("PATH").and_then(|path| {
-        env::split_paths(&path)
-            .map(|directory| directory.join(command_name))
-            .find(|candidate| is_executable(candidate))
-    })
+    env::var_os("PATH")
+        .and_then(|path| {
+            env::split_paths(&path)
+                .map(|directory| directory.join(command_name))
+                .find(|candidate| is_executable(candidate))
+        })
+        .or_else(|| {
+            ["/opt/homebrew/bin", "/usr/local/bin"]
+                .into_iter()
+                .map(|directory| Path::new(directory).join(command_name))
+                .find(|candidate| is_executable(candidate))
+        })
 }
 
 fn resolve_tmux() -> Option<PathBuf> {
@@ -1134,19 +1399,26 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn registry_contains_the_four_supported_tools() {
+    fn registry_contains_the_five_supported_tools() {
         assert_eq!(
             PROVIDERS.map(|provider| provider.id),
-            [ProviderId::Codex, ProviderId::Zcode, ProviderId::QoderCn, ProviderId::Antigravity,]
+            [
+                ProviderId::Codex,
+                ProviderId::Zcode,
+                ProviderId::Claude,
+                ProviderId::QoderCn,
+                ProviderId::Antigravity,
+            ]
         );
         assert!(PROVIDERS[0].quota_collection_supported);
         assert!(!PROVIDERS[1].quota_collection_supported);
-        assert!(PROVIDERS[2..].iter().all(|provider| provider.quota_collection_supported));
+        assert!(!PROVIDERS[2].quota_collection_supported);
+        assert!(PROVIDERS[3..].iter().all(|provider| provider.quota_collection_supported));
     }
 
     #[test]
     fn interactive_quota_capability_requires_cli_and_tmux() {
-        let qoder = &PROVIDERS[2];
+        let qoder = PROVIDERS.iter().find(|provider| provider.id == ProviderId::QoderCn).unwrap();
 
         let (supported, note) = provider_capability(qoder, true, false);
         assert!(!supported);
@@ -1284,6 +1556,77 @@ mod tests {
         assert_eq!(models[0].today.cached_input_tokens, 110);
         assert_eq!(models[0].today.session_count, 2);
         assert_eq!(models[0].today.call_count, 3);
+    }
+
+    #[test]
+    fn reads_claude_usage_metadata_and_deduplicates_streamed_message_records() {
+        let temp = tempdir().unwrap();
+        let projects = temp.path().join("projects");
+        let first_project = projects.join("first");
+        let second_project = projects.join("second");
+        fs::create_dir_all(&first_project).unwrap();
+        fs::create_dir_all(&second_project).unwrap();
+        fs::write(
+            first_project.join("one.jsonl"),
+            concat!(
+                "{\"type\":\"assistant\",\"timestamp\":\"2026-07-22T12:00:00Z\",\"sessionId\":\"session-one\",\"uuid\":\"event-one\",\"message\":{\"id\":\"message-one\",\"model\":\"claude-sonnet\",\"usage\":{\"input_tokens\":10,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":4,\"output_tokens\":5},\"content\":[{\"type\":\"text\",\"text\":\"ignored\"}]}}\n",
+                "{\"type\":\"assistant\",\"timestamp\":\"2026-07-22T12:00:01Z\",\"sessionId\":\"session-one\",\"uuid\":\"event-two\",\"message\":{\"id\":\"message-one\",\"model\":\"claude-sonnet\",\"usage\":{\"input_tokens\":10,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":4,\"output_tokens\":20},\"content\":[{\"type\":\"text\",\"text\":\"ignored\"}]}}\n"
+            ),
+        )
+        .unwrap();
+        fs::write(
+            second_project.join("two.jsonl"),
+            concat!(
+                "{\"type\":\"assistant\",\"timestamp\":\"2026-07-22T13:00:00Z\",\"sessionId\":\"session-two\",\"uuid\":\"event-three\",\"message\":{\"id\":\"message-two\",\"model\":\"claude-sonnet\",\"usage\":{\"input_tokens\":5,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":2,\"output_tokens\":1}}}\n",
+                "{\"type\":\"assistant\",\"timestamp\":\"2026-07-22T13:01:00Z\",\"sessionId\":\"session-two\",\"uuid\":\"synthetic\",\"message\":{\"id\":\"synthetic\",\"model\":\"<synthetic>\",\"usage\":{\"input_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":0}}}\n"
+            ),
+        )
+        .unwrap();
+        let day = chrono::DateTime::parse_from_rfc3339("2026-07-22T12:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Local)
+            .format("%Y-%m-%d")
+            .to_string();
+
+        let models = super::read_claude_model_activity_from_dir(&projects, &day, &day).unwrap();
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].provider_id, "claude");
+        assert_eq!(models[0].display_name, "Claude CLI · claude-sonnet");
+        assert_eq!(models[0].today.total_tokens, 45);
+        assert_eq!(models[0].today.input_tokens, 24);
+        assert_eq!(models[0].today.cached_input_tokens, 9);
+        assert_eq!(models[0].today.non_cached_input_tokens, 15);
+        assert_eq!(models[0].today.session_count, 2);
+        assert_eq!(models[0].today.call_count, 2);
+    }
+
+    #[test]
+    fn skips_a_claude_directory_that_cannot_be_read() {
+        let temp = tempdir().unwrap();
+        let not_a_directory = temp.path().join("not-a-directory");
+        fs::write(&not_a_directory, "not a directory").unwrap();
+        let mut files = Vec::new();
+
+        assert!(super::collect_claude_transcripts(&not_a_directory, &mut files).is_ok());
+        assert!(files.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn does_not_follow_claude_project_directory_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempdir().unwrap();
+        let projects = temp.path().join("projects");
+        fs::create_dir(&projects).unwrap();
+        fs::write(projects.join("one.jsonl"), "{}\n").unwrap();
+        symlink(&projects, projects.join("loop")).unwrap();
+        let mut files = Vec::new();
+
+        super::collect_claude_transcripts(&projects, &mut files).unwrap();
+
+        assert_eq!(files, [projects.join("one.jsonl")]);
     }
 
     #[test]
