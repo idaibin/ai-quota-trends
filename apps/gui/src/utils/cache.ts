@@ -48,3 +48,16 @@ export function resolveInitialTheme(cachedTheme?: string | null): "light" | "dar
   }
   return "light";
 }
+
+export function clearDataCache(): void {
+  try {
+    const storage = getStorage();
+    if (storage) {
+      storage.removeItem(CACHE_KEYS.DASHBOARD);
+      storage.removeItem(CACHE_KEYS.PROVIDERS);
+      storage.removeItem(CACHE_KEYS.PROVIDER_QUOTAS);
+    }
+  } catch {
+    // Ignore storage access error
+  }
+}

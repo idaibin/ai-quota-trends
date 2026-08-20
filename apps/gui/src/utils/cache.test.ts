@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { loadCachedJson, resolveInitialTheme, saveCachedJson } from "./cache";
+import { clearDataCache, loadCachedJson, resolveInitialTheme, saveCachedJson } from "./cache";
 
 class MockStorage implements Storage {
   private store: Record<string, string> = {};
@@ -47,5 +47,19 @@ describe("cache utilities", () => {
 
     expect(["light", "dark"]).toContain(resolveInitialTheme("system"));
     expect(["light", "dark"]).toContain(resolveInitialTheme(null));
+  });
+
+  it("clears cached data while preserving settings", () => {
+    saveCachedJson("aqt:cached-dashboard", { id: "test" });
+    saveCachedJson("aqt:cached-settings", { theme: "dark" });
+    saveCachedJson("aqt:cached-providers", [{ id: "codex" }]);
+    saveCachedJson("aqt:cached-provider-quotas", [{ id: "codex" }]);
+
+    clearDataCache();
+
+    expect(loadCachedJson("aqt:cached-dashboard")).toBeNull();
+    expect(loadCachedJson("aqt:cached-providers")).toBeNull();
+    expect(loadCachedJson("aqt:cached-provider-quotas")).toBeNull();
+    expect(loadCachedJson("aqt:cached-settings")).toEqual({ theme: "dark" });
   });
 });

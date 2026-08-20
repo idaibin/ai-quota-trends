@@ -191,16 +191,16 @@ describe("tray quota overview", () => {
         }),
       );
 
-    const warningMarkup = renderRemainingPercent(15.4);
-    expect(warningMarkup).toContain(">15%</b>");
+    const warningMarkup = renderRemainingPercent(20.4);
+    expect(warningMarkup).toContain(">20%</b>");
     expect(warningMarkup).toContain("tray-quota-status--warning");
 
-    const dangerMarkup = renderRemainingPercent(5.4);
-    expect(dangerMarkup).toContain(">5%</b>");
+    const dangerMarkup = renderRemainingPercent(10.4);
+    expect(dangerMarkup).toContain(">10%</b>");
     expect(dangerMarkup).toContain("tray-quota-status--danger");
 
-    expect(renderRemainingPercent(15.6)).not.toContain("tray-quota-status--warning");
-    expect(renderRemainingPercent(5.6)).toContain("tray-quota-status--warning");
+    expect(renderRemainingPercent(20.6)).not.toContain("tray-quota-status--warning");
+    expect(renderRemainingPercent(10.6)).toContain("tray-quota-status--warning");
   });
 
   it("shows the fixed five-tool catalog without a selector or Codex trend chart", () => {

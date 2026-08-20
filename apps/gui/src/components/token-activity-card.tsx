@@ -133,7 +133,7 @@ export function buildTokenHeatmap(
   const today = parseDay(todayDay);
   const start = addDays(today, -(HEATMAP_DAYS - 1));
   const startDayOfWeek = start.getUTCDay();
-  const usageByDay = new Map(history.map((usage) => [usage.day, usage]));
+  const usageByDay = new Map((history ?? []).map((usage) => [usage.day, usage]));
   return Array.from({ length: HEATMAP_DAYS }, (_, index) => {
     const date = addDays(start, index);
     const day = formatDay(date);
@@ -170,7 +170,9 @@ export interface TokenTooltipDetails {
   providers: TokenTooltipProvider[];
 }
 
-export const tokenProviderTodayTotals = (models: ModelTokenActivity[]): TokenTooltipProvider[] => {
+export const tokenProviderTodayTotals = (
+  models: ModelTokenActivity[] = [],
+): TokenTooltipProvider[] => {
   const providers = new Map<string, TokenTooltipProvider>(
     TOKEN_SUMMARY_PROVIDER_ORDER.map((providerId) => [
       providerId,
@@ -181,9 +183,9 @@ export const tokenProviderTodayTotals = (models: ModelTokenActivity[]): TokenToo
       },
     ]),
   );
-  for (const model of models) {
-    if (!TOKEN_SUMMARY_PROVIDER_ORDER.includes(model.providerId)) continue;
-    const tokens = Number.isFinite(model.today.totalTokens)
+  for (const model of models ?? []) {
+    if (!model || !TOKEN_SUMMARY_PROVIDER_ORDER.includes(model.providerId)) continue;
+    const tokens = Number.isFinite(model.today?.totalTokens)
       ? Math.max(0, model.today.totalTokens)
       : 0;
     const provider = providers.get(model.providerId) ?? {
@@ -210,8 +212,9 @@ export const tokenTooltipDetails = (
       tokens: number;
     }
   >();
-  for (const model of models) {
-    const tokens = model.history.find((usage) => usage.day === cell.day)?.totalTokens ?? 0;
+  for (const model of models ?? []) {
+    if (!model) continue;
+    const tokens = model.history?.find((usage) => usage.day === cell.day)?.totalTokens ?? 0;
     if (!Number.isFinite(tokens) || tokens <= 0 || !PROVIDER_ORDER.includes(model.providerId)) {
       continue;
     }
@@ -356,7 +359,7 @@ export function TokenActivityCard({
   appearance?: "light" | "dark";
 }) {
   const currentDay = todayDay();
-  const cells = buildTokenHeatmap(activity.history, currentDay);
+  const cells = buildTokenHeatmap(activity?.history ?? [], currentDay);
   const maximum = Math.max(0, ...cells.map((cell) => cell.totalTokens));
   const activeDays = cells.filter((cell) => cell.totalTokens > 0);
   const rangeSummary = activeDays.length
@@ -368,7 +371,7 @@ export function TokenActivityCard({
     count: cell.totalTokens,
     level: tokenHeatLevel(cell.totalTokens, maximum),
   }));
-  const providerTotals = tokenProviderTodayTotals(activity.models);
+  const providerTotals = tokenProviderTodayTotals(activity?.models ?? []);
   return (
     <section ref={sectionRef} className="tray-token-section" aria-label="Token 使用统计">
       <div className="tray-token-heatmap">
@@ -376,7 +379,7 @@ export function TokenActivityCard({
           <dl className="tray-token-metrics">
             <div className="tray-token-metric tray-token-metric--primary">
               <dt className="tray-token-metric-label">今日 Token 来源</dt>
-              <dd>{formatTokenCount(activity.today.totalTokens)}</dd>
+              <dd>{formatTokenCount(activity?.today?.totalTokens ?? 0)}</dd>
             </div>
           </dl>
           {providerTotals.length > 0 && (
@@ -416,7 +419,7 @@ export function TokenActivityCard({
               const cell = cellsByDay.get(activityDay.date);
               return cell ? (
                 <TokenActivityTooltip
-                  details={tokenTooltipDetails(cell, activity.models)}
+                  details={tokenTooltipDetails(cell, activity?.models ?? [])}
                   appearance={appearance}
                 >
                   {block}
@@ -431,7 +434,7 @@ export function TokenActivityCard({
       </div>
       <ul className="tray-token-accessible-details" aria-label="每日 Token 明细">
         {activeDays.map((cell) => (
-          <li key={cell.day}>{formatTokenTooltip(cell, activity.models)}</li>
+          <li key={cell.day}>{formatTokenTooltip(cell, activity?.models ?? [])}</li>
         ))}
       </ul>
     </section>

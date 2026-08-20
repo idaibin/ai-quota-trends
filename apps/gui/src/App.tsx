@@ -30,21 +30,25 @@ export default function App() {
       ? "settings"
       : "overview",
   );
-  const [dashboard, setDashboard] = useState<DashboardData | null>(() =>
-    loadCachedJson<DashboardData>(CACHE_KEYS.DASHBOARD),
-  );
-  const [settings, setSettings] = useState<AppSettings | null>(() =>
-    loadCachedJson<AppSettings>(CACHE_KEYS.SETTINGS),
-  );
-  const [providers, setProviders] = useState<ProviderProbe[]>(
-    () => loadCachedJson<ProviderProbe[]>(CACHE_KEYS.PROVIDERS) ?? [],
-  );
-  const [providerQuotas, setProviderQuotas] = useState<ProviderQuota[]>(
-    () => loadCachedJson<ProviderQuota[]>(CACHE_KEYS.PROVIDER_QUOTAS) ?? [],
-  );
+  const [dashboard, setDashboard] = useState<DashboardData | null>(() => {
+    const cached = loadCachedJson<DashboardData>(CACHE_KEYS.DASHBOARD);
+    return cached && typeof cached === "object" && "snapshot" in cached ? cached : null;
+  });
+  const [settings, setSettings] = useState<AppSettings | null>(() => {
+    const cached = loadCachedJson<AppSettings>(CACHE_KEYS.SETTINGS);
+    return cached && typeof cached === "object" && "theme" in cached ? cached : null;
+  });
+  const [providers, setProviders] = useState<ProviderProbe[]>(() => {
+    const cached = loadCachedJson<ProviderProbe[]>(CACHE_KEYS.PROVIDERS);
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [providerQuotas, setProviderQuotas] = useState<ProviderQuota[]>(() => {
+    const cached = loadCachedJson<ProviderQuota[]>(CACHE_KEYS.PROVIDER_QUOTAS);
+    return Array.isArray(cached) ? cached : [];
+  });
   const [providerQuotasLoading, setProviderQuotasLoading] = useState(() => {
     const cached = loadCachedJson<ProviderQuota[]>(CACHE_KEYS.PROVIDER_QUOTAS);
-    return startsAsTray && (!cached || cached.length === 0);
+    return startsAsTray && (!Array.isArray(cached) || cached.length === 0);
   });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +79,13 @@ export default function App() {
   useEffect(() => {
     void load();
     if (window.__TAURI_INTERNALS__) setWindowLabel(getCurrentWindow().label);
+    const handleFocus = () => void load();
+    window.addEventListener("focus", handleFocus);
     const timer = window.setInterval(() => void load(), 5_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.clearInterval(timer);
+    };
   }, [load]);
 
   useEffect(() => {

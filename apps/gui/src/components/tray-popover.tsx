@@ -98,9 +98,9 @@ const displayQuotaPercent = (remainingPercent: number) => {
 };
 
 const quotaStatusClass = (displayedRemainingPercent: number) =>
-  displayedRemainingPercent <= 5
+  displayedRemainingPercent <= 10
     ? " tray-quota-status--danger"
-    : displayedRemainingPercent <= 15
+    : displayedRemainingPercent <= 20
       ? " tray-quota-status--warning"
       : "";
 
@@ -139,16 +139,18 @@ const formatAntigravityGroupName = (name: string) => {
 };
 
 const formatAntigravityWindow = (
-  name: string,
+  name: string = "",
 ): {
   groupKey: string;
   groupLabel: string;
   windowKind: AntigravityWindowKind;
   windowLabel: string;
 } => {
-  const separatorIndex = name.indexOf(" · ");
-  const groupName = separatorIndex >= 0 ? name.slice(0, separatorIndex).trim() : name.trim();
-  const windowName = separatorIndex >= 0 ? name.slice(separatorIndex + 3).trim() : "";
+  const safeName = name ?? "";
+  const separatorIndex = safeName.indexOf(" · ");
+  const groupName =
+    separatorIndex >= 0 ? safeName.slice(0, separatorIndex).trim() : safeName.trim();
+  const windowName = separatorIndex >= 0 ? safeName.slice(separatorIndex + 3).trim() : "";
   const normalizedWindow = windowName.toLowerCase();
   const windowKind: AntigravityWindowKind =
     normalizedWindow.includes("weekly") || windowName.includes("每周")
@@ -165,14 +167,14 @@ const formatAntigravityWindow = (
         ? "5小时"
         : windowName || "未知窗口";
   return {
-    groupKey: groupName || name,
+    groupKey: groupName || safeName,
     groupLabel: formatAntigravityGroupName(groupName),
     windowKind,
     windowLabel,
   };
 };
 
-export const groupAntigravityQuotaPools = (pools: ProviderQuota["pools"]) => {
+export const groupAntigravityQuotaPools = (pools: ProviderQuota["pools"] = []) => {
   const groups = new Map<
     string,
     {
@@ -189,7 +191,8 @@ export const groupAntigravityQuotaPools = (pools: ProviderQuota["pools"]) => {
     }
   >();
 
-  pools.forEach((pool, index) => {
+  (pools ?? []).forEach((pool, index) => {
+    if (!pool) return;
     const window = formatAntigravityWindow(pool.name);
     const group = groups.get(window.groupKey) ?? {
       key: window.groupKey || `group-${index}`,
@@ -198,7 +201,7 @@ export const groupAntigravityQuotaPools = (pools: ProviderQuota["pools"]) => {
       models: [],
       pools: [],
     };
-    group.models = [...new Set([...group.models, ...pool.models])];
+    group.models = [...new Set([...(group.models ?? []), ...(pool.models ?? [])])];
     group.pools.push({
       index,
       pool,
@@ -213,7 +216,7 @@ export const groupAntigravityQuotaPools = (pools: ProviderQuota["pools"]) => {
 
 const boundedPercent = (value: number) => Math.max(0, Math.min(100, value));
 export const hasFiniteRemaining = (pool: ProviderQuota["pools"][number]) =>
-  pool.remainingPercent != null && Number.isFinite(pool.remainingPercent);
+  pool != null && pool.remainingPercent != null && Number.isFinite(pool.remainingPercent);
 
 export const hasVisibleCodexQuota = (quotaWindow: QuotaWindow | undefined) =>
   quotaWindow != null && Number.isFinite(quotaWindow.usedPercent);
@@ -226,7 +229,7 @@ export const hasVisibleLocalQuota = (
   enabled &&
   !loading &&
   providerQuota?.status === "available" &&
-  providerQuota.pools.some(hasFiniteRemaining);
+  (providerQuota.pools ?? []).some(hasFiniteRemaining);
 
 export const shouldRenderQuotaProvider = ({
   providerId,
@@ -297,14 +300,14 @@ export function TrayPopover({
   providerQuotasLoading?: boolean;
   appearance?: "light" | "dark";
 }) {
-  const quotaWindow = data.snapshot.windows[0];
+  const quotaWindow = data?.snapshot?.windows?.[0];
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1_000));
   const usageStackRef = useRef<HTMLElement>(null);
   const tokenSectionRef = useRef<HTMLElement>(null);
   const requestedHeightRef = useRef<number | null>(null);
   const enabledProviderIds = useMemo(
-    () => new Set(settings.enabledProviderIds),
-    [settings.enabledProviderIds],
+    () => new Set(settings?.enabledProviderIds ?? []),
+    [settings?.enabledProviderIds],
   );
   const visibleProviders = useMemo(
     () =>
@@ -317,7 +320,7 @@ export function TrayPopover({
     [providers],
   );
   const quotasByProvider = useMemo(
-    () => new Map(providerQuotas.map((quota) => [quota.id, quota])),
+    () => new Map((providerQuotas ?? []).map((quota) => [quota.id, quota])),
     [providerQuotas],
   );
   const visibleQuotaProviders = useMemo(
@@ -422,11 +425,11 @@ export function TrayPopover({
 
                 if (isAntigravity && providerQuota) {
                   return groupAntigravityQuotaPools(
-                    providerQuota.pools.filter(hasFiniteRemaining),
+                    (providerQuota.pools ?? []).filter(hasFiniteRemaining),
                   ).map((group) => {
-                    const groupKind = group.rawGroupName.toLowerCase().includes("gemini")
+                    const groupKind = group.rawGroupName?.toLowerCase().includes("gemini")
                       ? "gemini"
-                      : group.rawGroupName.toLowerCase().includes("claude")
+                      : group.rawGroupName?.toLowerCase().includes("claude")
                         ? "claude"
                         : "default";
                     return (
@@ -437,16 +440,16 @@ export function TrayPopover({
                         aria-label={`${group.label} 额度`}
                       >
                         <div className="tray-quota-group-header">
-                          <strong title={group.models.join("、") || group.rawGroupName}>
+                          <strong title={(group.models ?? []).join("、") || group.rawGroupName}>
                             {group.label}
                           </strong>
                         </div>
                         <div className="tray-quota-window-list">
                           {group.pools.map(({ index, pool, windowKind, windowLabel }) => {
-                            const remaining = boundedPercent(pool.remainingPercent ?? 0);
+                            const remaining = boundedPercent(pool?.remainingPercent ?? 0);
                             const displayedRemaining = displayQuotaPercent(remaining);
                             const refreshDuration = formatRefreshDuration(
-                              pool.refreshAfterSeconds ?? null,
+                              pool?.refreshAfterSeconds ?? null,
                             );
                             const statusClass = quotaStatusClass(displayedRemaining);
                             return (
@@ -492,7 +495,7 @@ export function TrayPopover({
                 }
 
                 if (isQoder && providerQuota) {
-                  const qoderPool = providerQuota.pools.find(hasFiniteRemaining);
+                  const qoderPool = (providerQuota.pools ?? []).find(hasFiniteRemaining);
                   if (!qoderPool) return [];
                   const remaining = boundedPercent(qoderPool.remainingPercent ?? 0);
                   const displayedRemaining = displayQuotaPercent(remaining);
