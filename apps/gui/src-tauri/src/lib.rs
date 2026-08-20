@@ -128,9 +128,25 @@ fn toggle_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let updater = tauri_plugin_updater::Builder::new().target("darwin-universal");
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_autostart::Builder::new().app_name("AI Quota Trends").build())
-        .plugin(updater.build())
+        .plugin(updater.build());
+
+    #[cfg(target_os = "macos")]
+    let builder = builder.on_web_content_process_terminate(|webview| {
+        eprintln!(
+            "[AQT] WebKit content process for webview `{}` terminated; reloading",
+            webview.label()
+        );
+        if let Err(error) = webview.reload() {
+            eprintln!(
+                "[AQT] failed to reload webview `{}` after WebKit content process termination: {error}",
+                webview.label()
+            );
+        }
+    });
+
+    let app = builder
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
