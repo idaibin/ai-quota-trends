@@ -91,6 +91,25 @@ fn show_main(app: &tauri::AppHandle, route: Option<&str>) {
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum TrayToggleAction {
+    Hide,
+    Show,
+}
+
+fn tray_toggle_action(visible: bool) -> TrayToggleAction {
+    if visible { TrayToggleAction::Hide } else { TrayToggleAction::Show }
+}
+
+fn show_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
+    let Some(window) = app.get_webview_window("tray") else { return };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let width = window.outer_size().map(|size| size.width as f64).unwrap_or(338.0 * scale);
+    let _ = window.set_position(PhysicalPosition::new((anchor_x - width / 2.0).max(8.0), anchor_y));
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
 #[tauri::command]
 fn open_settings(app: tauri::AppHandle) {
     show_main(&app, Some("settings"));
@@ -98,15 +117,12 @@ fn open_settings(app: tauri::AppHandle) {
 
 fn toggle_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
     let Some(window) = app.get_webview_window("tray") else { return };
-    if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
-        return;
+    match tray_toggle_action(window.is_visible().unwrap_or(false)) {
+        TrayToggleAction::Hide => {
+            let _ = window.hide();
+        }
+        TrayToggleAction::Show => show_tray(app, anchor_x, anchor_y),
     }
-    let scale = window.scale_factor().unwrap_or(1.0);
-    let width = window.outer_size().map(|size| size.width as f64).unwrap_or(420.0 * scale);
-    let _ = window.set_position(PhysicalPosition::new((anchor_x - width / 2.0).max(8.0), anchor_y));
-    let _ = window.show();
-    let _ = window.set_focus();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -243,8 +259,8 @@ mod tests {
     use std::fs;
 
     use super::{
-        format_remaining_title, migrate_legacy_app_data, migrate_legacy_preferences,
-        remove_legacy_autostart_entries,
+        TrayToggleAction, format_remaining_title, migrate_legacy_app_data,
+        migrate_legacy_preferences, remove_legacy_autostart_entries, tray_toggle_action,
     };
 
     #[test]
@@ -254,6 +270,12 @@ mod tests {
         assert_eq!(format_remaining_title(Some(120.0)), "0%");
         assert_eq!(format_remaining_title(None), "--%");
         assert_eq!(format_remaining_title(Some(f64::NAN)), "--%");
+    }
+
+    #[test]
+    fn shows_a_hidden_tray_without_waiting_for_a_webview_signal() {
+        assert_eq!(tray_toggle_action(false), TrayToggleAction::Show);
+        assert_eq!(tray_toggle_action(true), TrayToggleAction::Hide);
     }
 
     #[test]

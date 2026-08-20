@@ -17,6 +17,7 @@ import { IconButton, SelectControl } from "./components/ui";
 import { OverviewRoute } from "./routes/overview-route";
 import { SettingsRoute } from "./routes/settings-route";
 import type { AppSettings, DashboardData, ProviderProbe, ProviderQuota, ThemeMode } from "./types";
+import { CACHE_KEYS, loadCachedJson, saveCachedJson } from "./utils/cache";
 
 type MainRoute = "overview" | "settings";
 export const PROVIDER_QUOTA_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
@@ -29,26 +30,42 @@ export default function App() {
       ? "settings"
       : "overview",
   );
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [providers, setProviders] = useState<ProviderProbe[]>([]);
-  const [providerQuotas, setProviderQuotas] = useState<ProviderQuota[]>([]);
-  const [providerQuotasLoading, setProviderQuotasLoading] = useState(startsAsTray);
+  const [dashboard, setDashboard] = useState<DashboardData | null>(() =>
+    loadCachedJson<DashboardData>(CACHE_KEYS.DASHBOARD),
+  );
+  const [settings, setSettings] = useState<AppSettings | null>(() =>
+    loadCachedJson<AppSettings>(CACHE_KEYS.SETTINGS),
+  );
+  const [providers, setProviders] = useState<ProviderProbe[]>(
+    () => loadCachedJson<ProviderProbe[]>(CACHE_KEYS.PROVIDERS) ?? [],
+  );
+  const [providerQuotas, setProviderQuotas] = useState<ProviderQuota[]>(
+    () => loadCachedJson<ProviderQuota[]>(CACHE_KEYS.PROVIDER_QUOTAS) ?? [],
+  );
+  const [providerQuotasLoading, setProviderQuotasLoading] = useState(() => {
+    const cached = loadCachedJson<ProviderQuota[]>(CACHE_KEYS.PROVIDER_QUOTAS);
+    return startsAsTray && (!cached || cached.length === 0);
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [windowLabel, setWindowLabel] = useState(startsAsTray ? "tray" : "main");
   const [systemPrefersDark, setSystemPrefersDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
-  const providerQuotasLoadedRef = useRef(false);
-  const providerQuotaRequestRef = useRef(false);
+  const providerQuotasLoadedRef = useRef(
+    Boolean(loadCachedJson<ProviderQuota[]>(CACHE_KEYS.PROVIDER_QUOTAS)?.length),
+  );
+  const providerQuotaRequestRef = useRef<Promise<ProviderQuota[]> | null>(null);
   const settingsReady = settings !== null;
+  const isTraySurface = startsAsTray || windowLabel === "tray";
 
   const load = useCallback(async () => {
     try {
       const [dashboardData, settingsData] = await Promise.all([getDashboard(), getSettings()]);
       setDashboard(dashboardData);
       setSettings(settingsData);
+      saveCachedJson(CACHE_KEYS.DASHBOARD, dashboardData);
+      saveCachedJson(CACHE_KEYS.SETTINGS, settingsData);
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -66,10 +83,13 @@ export default function App() {
     let cancelled = false;
     void listProviders()
       .then((items) => {
-        if (!cancelled) setProviders(items);
+        if (!cancelled) {
+          setProviders(items);
+          saveCachedJson(CACHE_KEYS.PROVIDERS, items);
+        }
       })
       .catch(() => {
-        if (!cancelled) setProviders([]);
+        if (!cancelled && !loadCachedJson(CACHE_KEYS.PROVIDERS)) setProviders([]);
       });
     return () => {
       cancelled = true;
@@ -77,27 +97,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (windowLabel !== "tray" || !settingsReady) return;
-    let cancelled = false;
+    if (!isTraySurface || !settingsReady) return;
     const refreshProviderQuotas = async (initial: boolean) => {
-      if (cancelled || providerQuotaRequestRef.current) return;
-      providerQuotaRequestRef.current = true;
       if (initial && !providerQuotasLoadedRef.current) setProviderQuotasLoading(true);
+      const request = providerQuotaRequestRef.current ?? listProviderQuotas();
+      providerQuotaRequestRef.current = request;
       try {
-        const items = await listProviderQuotas();
-        if (!cancelled) {
-          setProviderQuotas(items);
-          providerQuotasLoadedRef.current = true;
-          setProviderQuotasLoading(false);
-        }
+        const items = await request;
+        setProviderQuotas(items);
+        saveCachedJson(CACHE_KEYS.PROVIDER_QUOTAS, items);
+        providerQuotasLoadedRef.current = true;
+        setProviderQuotasLoading(false);
       } catch {
-        if (!cancelled) {
-          setProviderQuotas([]);
-          providerQuotasLoadedRef.current = true;
-          setProviderQuotasLoading(false);
-        }
+        setProviderQuotas([]);
+        providerQuotasLoadedRef.current = true;
+        setProviderQuotasLoading(false);
       } finally {
-        providerQuotaRequestRef.current = false;
+        if (providerQuotaRequestRef.current === request) providerQuotaRequestRef.current = null;
       }
     };
     void refreshProviderQuotas(true);
@@ -108,11 +124,10 @@ export default function App() {
       PROVIDER_QUOTA_REFRESH_INTERVAL_MS,
     );
     return () => {
-      cancelled = true;
       window.removeEventListener("focus", handleTrayFocus);
       window.clearInterval(timer);
     };
-  }, [settingsReady, windowLabel]);
+  }, [isTraySurface, settingsReady]);
 
   useEffect(() => {
     if (localStorage.getItem("cqt:requested-route")) localStorage.removeItem("cqt:requested-route");
@@ -177,7 +192,9 @@ export default function App() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      setDashboard(await refreshQuota());
+      const refreshed = await refreshQuota();
+      setDashboard(refreshed);
+      saveCachedJson(CACHE_KEYS.DASHBOARD, refreshed);
     } finally {
       setRefreshing(false);
     }
@@ -187,7 +204,13 @@ export default function App() {
     if (!settings) return;
     const next = { ...settings, theme: (resolvedTheme === "dark" ? "light" : "dark") as ThemeMode };
     setSettings(next);
+    saveCachedJson(CACHE_KEYS.SETTINGS, next);
     void saveSettings(next);
+  };
+
+  const handleSettingsChange = (nextSettings: AppSettings) => {
+    setSettings(nextSettings);
+    saveCachedJson(CACHE_KEYS.SETTINGS, nextSettings);
   };
 
   if (!dashboard || !settings)
@@ -198,10 +221,7 @@ export default function App() {
         {error && <span>读取失败，请稍后重试</span>}
       </div>
     );
-  if (
-    windowLabel === "tray" ||
-    new URLSearchParams(window.location.search).get("surface") === "tray"
-  )
+  if (isTraySurface)
     return (
       <TrayPopover
         data={dashboard}
@@ -242,7 +262,9 @@ export default function App() {
     >
       {error && <div className="error-banner">采集器连接异常，请稍后重试</div>}
       {route === "overview" && <OverviewRoute data={dashboard} />}
-      {route === "settings" && <SettingsRoute settings={settings} onSettingsChange={setSettings} />}
+      {route === "settings" && (
+        <SettingsRoute settings={settings} onSettingsChange={handleSettingsChange} />
+      )}
     </AppShell>
   );
 }

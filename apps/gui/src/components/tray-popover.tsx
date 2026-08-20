@@ -266,6 +266,22 @@ export const calculateTrayHeight = ({
   );
 };
 
+type TrayResizeObserver = Pick<ResizeObserver, "observe" | "disconnect">;
+type TrayResizeObserverConstructor = new (callback: () => void) => TrayResizeObserver;
+
+export const observeTrayContentResize = (
+  elements: Array<Element | null>,
+  onResize: () => void,
+  Observer: TrayResizeObserverConstructor = ResizeObserver,
+) => {
+  const observer = new Observer(onResize);
+  elements.forEach((element) => {
+    if (element) observer.observe(element);
+  });
+  onResize();
+  return () => observer.disconnect();
+};
+
 export function TrayPopover({
   data,
   settings,
@@ -325,7 +341,7 @@ export function TrayPopover({
 
   useLayoutEffect(() => {
     if (!isTauriRuntime()) return;
-    const frame = window.requestAnimationFrame(() => {
+    const resizeToContent = () => {
       const nextHeight = calculateTrayHeight({
         providerStackHeight: usageStackRef.current?.scrollHeight ?? 0,
         tokenSectionHeight: tokenSectionRef.current?.scrollHeight ?? 0,
@@ -343,8 +359,11 @@ export function TrayPopover({
         .catch(() => {
           requestedHeightRef.current = null;
         });
-    });
-    return () => window.cancelAnimationFrame(frame);
+    };
+    return observeTrayContentResize(
+      [usageStackRef.current, tokenSectionRef.current],
+      resizeToContent,
+    );
   }, [data, now, providerQuotasLoading, quotaWindow, visibleQuotaProviders]);
 
   return (

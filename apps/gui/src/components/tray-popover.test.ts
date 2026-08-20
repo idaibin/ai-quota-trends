@@ -14,6 +14,7 @@ import {
   hasVisibleCodexQuota,
   hasVisibleLocalQuota,
   shouldRenderQuotaProvider,
+  observeTrayContentResize,
 } from "./tray-popover";
 
 describe("tray quota overview", () => {
@@ -132,6 +133,41 @@ describe("tray quota overview", () => {
     expect(TRAY_INITIAL_HEIGHT).toBe(500);
     expect(calculateTrayHeight({ providerStackHeight: 0, tokenSectionHeight: 180 })).toBe(206);
     expect(calculateTrayHeight({ providerStackHeight: 64, tokenSectionHeight: 180 })).toBe(287);
+  });
+
+  it("remeasures when either tray content region changes size", () => {
+    const observed: Element[] = [];
+    let resizeCallback: (() => void) | undefined;
+    let disconnected = false;
+    class TestResizeObserver {
+      constructor(callback: () => void) {
+        resizeCallback = callback;
+      }
+      observe(element: Element) {
+        observed.push(element);
+      }
+      disconnect() {
+        disconnected = true;
+      }
+    }
+    const providerStack = {} as Element;
+    const tokenSection = {} as Element;
+    let measurements = 0;
+
+    const cleanup = observeTrayContentResize(
+      [providerStack, tokenSection],
+      () => {
+        measurements += 1;
+      },
+      TestResizeObserver,
+    );
+
+    expect(observed).toEqual([providerStack, tokenSection]);
+    expect(measurements).toBe(1);
+    resizeCallback?.();
+    expect(measurements).toBe(2);
+    cleanup();
+    expect(disconnected).toBe(true);
   });
 
   it("aligns Codex low-quota status with the rounded visible percentage", () => {

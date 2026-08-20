@@ -1,5 +1,37 @@
 # Design QA
 
+## Tray completeness and reliable opening — 2026-08-19
+
+- Scope: keep tray clicks immediately responsive, preserve the initial local-quota request across
+  React StrictMode effect replay, and let asynchronously added Qoder/Antigravity rows expand the
+  native window instead of shrinking inside the initial height.
+- Root causes: a WebView-readiness gate introduced during this fix could remain unresolved while
+  the window was hidden and prevented the tray from opening; the provider-quota effect used a
+  boolean in-flight guard that left the replayed effect without its own completion handler; and
+  `.tray-usage-stack` retained flex shrinking, so later quota rows could be clipped without
+  producing a measurable content-box resize.
+- Correction: tray clicks now show the native window synchronously without waiting for JavaScript.
+  The tray loading surface uses an opaque dark background, while ResizeObserver-based remeasurement
+  still expands the window when delayed provider rows arrive.
+- Runtime data evidence: a bounded live read returned Qoder CN as `Available` with 2 pools and
+  Antigravity as `Available` with 4 pools. No quota values, credentials, or provider content were
+  persisted by the diagnostic.
+- Validation: the focused immediate-open, StrictMode request-sharing, ResizeObserver, and tray rendering
+  checks were observed failing before their corresponding fixes and pass afterward. `just fmt`,
+  `just check`, `just test`, `just build-gui`, and `git diff --check` pass; the suites contain 67 core,
+  12 Tauri, and 55 frontend tests.
+- Installed runtime: the ad-hoc-signed debug app is installed at
+  `/Applications/AI Quota Trends.app`, passes strict deep signature verification, and runs as PID
+  `27347` with Codex app-server child PID `27364`. The immediately prior installation is retained at
+  `/private/tmp/ai-quota-trends-direct-open.DKy8ps/AI Quota Trends.app`.
+- Native visual boundary: CoreGraphics identifies the hidden tray layer at 338×365 points before
+  user interaction. Computer Use timed out twice while acquiring the menu-bar-only client, so the
+  opened popover, final expanded height, and composited content remain `Not verified`; no browser
+  preview or coordinate click was substituted.
+
+final result: source, tests, build, installation, process, and signature verified; opened native tray
+visual Not verified
+
 ## Token calendar, Claude CLI, and Spotlight deduplication — 2026-08-17
 
 - Scope: group the current-day Token total with its provider breakdown, preserve every month label, add Claude CLI local Token activity, and remove the duplicate Spotlight result for the debug app bundle.

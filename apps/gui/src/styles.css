@@ -1387,6 +1387,7 @@ select {
   border-radius: inherit;
 }
 .tray-usage-stack {
+  flex: 0 0 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -1878,6 +1879,10 @@ select {
 .loading-screen {
   color: var(--muted);
   background: var(--canvas);
+}
+:root[data-surface="tray"] .loading-screen {
+  color: #a3a3a3;
+  background: #101010;
 }
 .loading-screen img {
   width: 54px;
