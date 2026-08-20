@@ -25,6 +25,24 @@ With Codex authenticated, start the Tauri app and confirm:
 
 The app must not access `~/.codex/auth.json` or a `chatgpt.com/backend-api` URL.
 
+## macOS sleep and WebKit recovery
+
+1. Build, install, and restart `/Applications/AI Quota Trends.app`.
+2. Open both the tray popover and the main Settings window once, then hide them.
+3. Put the Mac to sleep using the same duration and display setup that previously
+   reproduced the blank window, then wake it and open both surfaces again.
+4. Confirm each surface renders real content rather than a white or transparent
+   canvas and refreshes its local data without restarting the Rust application.
+5. Repeat the sleep and wake cycle at least three times, including one cycle after
+   disconnecting or reconnecting an external display when that was part of the
+   original reproduction.
+6. In Console, filter for `process:ai-quota-trends`. If WebKit reports a terminated
+   content process, confirm the app logs the affected webview reload and does not log
+   `failed to reload webview`.
+
+Passing automated gates does not satisfy this acceptance. The installed macOS app
+and its real WKWebView processes must be exercised.
+
 ## Product identity migration
 
 1. Start from an existing
