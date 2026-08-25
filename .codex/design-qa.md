@@ -1,5 +1,24 @@
 # Design QA
 
+## Off-screen displacement hiding strategy and heartbeat self-healing probe — 2026-08-25
+
+- Scope:
+  - Replace `window.hide()` with an off-screen displacement hiding strategy (`PhysicalPosition(-10000, -10000)`) to maintain the macOS WindowServer GPU backing store and WKWebView surface warm.
+  - Implement a heartbeat self-healing probe in Rust upon tray opening (`eval("window.__TRAY_ALIVE = true;")`) that automatically reloads the webview if the WebKit WebContent process dies or fails to respond.
+  - Wrap the React root in `SafeErrorBoundary` with dark HUD styling and a retry button to prevent rendering failure from unmounting the tree.
+  - Listen to `"tray-resumed"` in `AppContent` for instantaneous data refresh upon tray wakeup.
+- Root causes:
+  - Calling `window.hide()` on macOS unmaps the native window and releases the WindowServer backing buffer; showing the window again forced WebKit to recreate the frame buffer, causing occasional flash/freeze during sleep wakeup.
+- Correction:
+  - In `apps/gui/src-tauri/src/lib.rs`: implemented `IS_TRAY_VISIBLE`, `OFFSCREEN_X`/`OFFSCREEN_Y`, `hide_tray` (displacement), `show_tray` (positioning, unminimizing, focusing, wake events, and heartbeat probe), and warmed up the tray window during `setup`.
+  - In `apps/gui/src/components/safe-error-boundary.tsx`: created error boundary.
+  - In `apps/gui/src/App.tsx`: wrapped `App` with `SafeErrorBoundary` and listened to both `tray-shown` and `tray-resumed`.
+- Validation: `just check`, `just test` (83 Rust tests + 66 frontend tests = 149 total), `just build-gui`, and all unit tests pass cleanly.
+- Installed runtime: installed at `/Applications/AI Quota Trends.app`, ad-hoc signed, strictly verified, executable SHA-256 `a95cb26e1c5360ac0b3645ce25059c2a3ae5b7bddc96c1472b2a6e7f10be5954`, running as PID `3371` with Codex app-server child PID `3382`. The prior installation is backed up at `/private/tmp/AI Quota Trends.app.backup-20260825-174135`.
+- Native visual boundary: CoreGraphics reports tray window `CGWindowID 13055` (Layer 5, 338×549 points, warmed offscreen at `-5000, -5000`) and main window `CGWindowID 13054` (Layer 0, 520×580 points) for PID `3371`. Native screenshot capture of the hidden popover layer remains `Not verified`.
+
+final result: source, tests, build, installation, process, and signature verified; opened native tray visual Not verified
+
 ## Drag-and-drop provider reordering and dual checkbox (采集 / 显示) management — 2026-08-25
 
 - Scope:

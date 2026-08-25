@@ -12,6 +12,7 @@ import {
   saveSettings,
 } from "./api/quota-api";
 import { AppShell } from "./components/app-shell";
+import { SafeErrorBoundary } from "./components/safe-error-boundary";
 import { TrayPopover } from "./components/tray-popover";
 import { IconButton, SelectControl } from "./components/ui";
 import { OverviewRoute } from "./routes/overview-route";
@@ -22,7 +23,7 @@ import { CACHE_KEYS, loadCachedJson, saveCachedJson } from "./utils/cache";
 type MainRoute = "overview" | "settings";
 export const PROVIDER_QUOTA_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
 
-export default function App() {
+export function AppContent() {
   const startsAsTray = new URLSearchParams(window.location.search).get("surface") === "tray";
   const [route, setRoute] = useState<MainRoute>(() =>
     new URLSearchParams(window.location.search).get("route") === "settings" ||
@@ -88,12 +89,15 @@ export default function App() {
     document.addEventListener("visibilitychange", handleVisibility);
 
     let unlistenTrayShown: (() => void) | undefined;
+    let unlistenTrayResumed: (() => void) | undefined;
     if (window.__TAURI_INTERNALS__) {
-      void getCurrentWindow()
-        .listen("tray-shown", handleFocus)
-        .then((unlisten) => {
-          unlistenTrayShown = unlisten;
-        });
+      const win = getCurrentWindow();
+      void win.listen("tray-shown", handleFocus).then((unlisten) => {
+        unlistenTrayShown = unlisten;
+      });
+      void win.listen("tray-resumed", handleFocus).then((unlisten) => {
+        unlistenTrayResumed = unlisten;
+      });
     }
 
     const timer = window.setInterval(() => void load(), 5_000);
@@ -102,6 +106,7 @@ export default function App() {
       window.removeEventListener("aqt-tray-shown", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
       if (unlistenTrayShown) unlistenTrayShown();
+      if (unlistenTrayResumed) unlistenTrayResumed();
       window.clearInterval(timer);
     };
   }, [load]);
@@ -153,12 +158,15 @@ export default function App() {
     document.addEventListener("visibilitychange", handleVisibility);
 
     let unlistenTrayShown: (() => void) | undefined;
+    let unlistenTrayResumed: (() => void) | undefined;
     if (window.__TAURI_INTERNALS__) {
-      void getCurrentWindow()
-        .listen("tray-shown", handleTrayFocus)
-        .then((unlisten) => {
-          unlistenTrayShown = unlisten;
-        });
+      const win = getCurrentWindow();
+      void win.listen("tray-shown", handleTrayFocus).then((unlisten) => {
+        unlistenTrayShown = unlisten;
+      });
+      void win.listen("tray-resumed", handleTrayFocus).then((unlisten) => {
+        unlistenTrayResumed = unlisten;
+      });
     }
 
     const timer = window.setInterval(
@@ -170,6 +178,7 @@ export default function App() {
       window.removeEventListener("aqt-tray-shown", handleTrayFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
       if (unlistenTrayShown) unlistenTrayShown();
+      if (unlistenTrayResumed) unlistenTrayResumed();
       window.clearInterval(timer);
     };
   }, [isTraySurface, settingsReady]);
@@ -335,5 +344,13 @@ export default function App() {
         <SettingsRoute settings={settings} onSettingsChange={handleSettingsChange} />
       )}
     </AppShell>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeErrorBoundary fallbackTitle="配额趋势面板加载失败">
+      <AppContent />
+    </SafeErrorBoundary>
   );
 }

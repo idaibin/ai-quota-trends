@@ -5,7 +5,10 @@ mod update;
 use std::{
     fs, io,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use ai_quota_core::{CollectorConfig, CollectorRuntime, Database, TokenUsageRuntime};
@@ -17,6 +20,10 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use tauri_plugin_autostart::ManagerExt;
+
+static IS_TRAY_VISIBLE: AtomicBool = AtomicBool::new(false);
+const OFFSCREEN_X: f64 = -10000.0;
+const OFFSCREEN_Y: f64 = -10000.0;
 
 const TRAY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 const LEGACY_APP_IDENTIFIER: &str = "dev.idaibin.codex-quota-trends";
@@ -99,14 +106,35 @@ fn tray_toggle_action(visible: bool) -> TrayToggleAction {
     if visible { TrayToggleAction::Hide } else { TrayToggleAction::Show }
 }
 
+fn hide_tray(window: &tauri::WebviewWindow) {
+    let _ = window.set_position(PhysicalPosition::new(OFFSCREEN_X, OFFSCREEN_Y));
+    IS_TRAY_VISIBLE.store(false, Ordering::SeqCst);
+}
+
 fn show_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
     let Some(window) = app.get_webview_window("tray") else { return };
+    if let Ok(false) = window.is_visible() {
+        let _ = window.show();
+    }
     let scale = window.scale_factor().unwrap_or(1.0);
     let width = window.outer_size().map(|size| size.width as f64).unwrap_or(338.0 * scale);
-    let _ = window.set_position(PhysicalPosition::new((anchor_x - width / 2.0).max(8.0), anchor_y));
-    let _ = window.show();
+    let target_x = (anchor_x - width / 2.0).max(8.0);
+    let target_y = anchor_y;
+    let _ = window.set_position(PhysicalPosition::new(target_x, target_y));
+    let _ = window.unminimize();
     let _ = window.set_focus();
+    IS_TRAY_VISIBLE.store(true, Ordering::SeqCst);
     let _ = window.emit("tray-shown", ());
+    let _ = window.emit("tray-resumed", ());
+
+    let win_clone = window.clone();
+    tauri::async_runtime::spawn(async move {
+        let probe_result = win_clone.eval("window.__TRAY_ALIVE = true;");
+        if probe_result.is_err() {
+            eprintln!("[AQT Recovery] WebKit WebContent process unresponsive on tray show; reloading webview");
+            let _ = win_clone.eval("window.location.reload();");
+        }
+    });
 }
 
 #[tauri::command]
@@ -116,9 +144,10 @@ fn open_settings(app: tauri::AppHandle) {
 
 fn toggle_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
     let Some(window) = app.get_webview_window("tray") else { return };
-    match tray_toggle_action(window.is_visible().unwrap_or(false)) {
+    let is_visible = IS_TRAY_VISIBLE.load(Ordering::SeqCst);
+    match tray_toggle_action(is_visible) {
         TrayToggleAction::Hide => {
-            let _ = window.hide();
+            hide_tray(&window);
         }
         TrayToggleAction::Show => show_tray(app, anchor_x, anchor_y),
     }
@@ -219,6 +248,10 @@ pub fn run() {
                     }
                 }
             });
+            if let Some(tray_window) = app.get_webview_window("tray") {
+                hide_tray(&tray_window);
+                let _ = tray_window.show();
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -257,7 +290,7 @@ pub fn run() {
             if label == "tray" =>
         {
             if let Some(window) = handle.get_webview_window("tray") {
-                let _ = window.hide();
+                hide_tray(&window);
             }
         }
         _ => {}
