@@ -1,5 +1,22 @@
-import { CalendarBlank, Cpu, Database, DotsSixVertical, Info } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { CalendarBlank, Cpu, Database, Info } from "@phosphor-icons/react";
+import { useEffect, useMemo, useState } from "react";
 import { getDatabaseStats, listProviders, saveSettings } from "../api/quota-api";
 import type {
   AppSettings,
@@ -214,15 +231,6 @@ export function ProviderCatalog({
 }) {
   if (providers.length === 0) return <div className="provider-empty">正在检测本机工具…</div>;
 
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const gridRef = useRef<HTMLDivElement | null>(null);
-  const dragInfoRef = useRef<{
-    startIndex: number;
-    pointerId: number;
-    element: HTMLElement;
-  } | null>(null);
-
   const effectiveOrder = useMemo(() => {
     const base =
       providerOrder && providerOrder.length > 0 ? [...providerOrder] : [...DEFAULT_PROVIDER_ORDER];
@@ -239,151 +247,73 @@ export function ProviderCatalog({
       .filter((p): p is ProviderProbe => p != null);
   }, [effectiveOrder, providers]);
 
-  const handleMove = (fromIndex: number, toIndex: number) => {
-    if (toIndex < 0 || toIndex >= effectiveOrder.length || fromIndex === toIndex) return;
-    const next = [...effectiveOrder];
-    const [item] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, item);
-    onOrderChange(next);
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 4,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
-  const getTargetIndexAtY = (clientY: number): number => {
-    if (!gridRef.current) return -1;
-    const cards = Array.from(gridRef.current.querySelectorAll<HTMLElement>(".provider-card"));
-    if (cards.length === 0) return -1;
-    let target = cards.length - 1;
-    for (let i = 0; i < cards.length; i++) {
-      const rect = cards[i].getBoundingClientRect();
-      const midY = rect.top + rect.height / 2;
-      if (clientY < midY) {
-        target = i;
-        break;
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = effectiveOrder.indexOf(active.id as ProviderId);
+      const newIndex = effectiveOrder.indexOf(over.id as ProviderId);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const nextOrder = arrayMove(effectiveOrder, oldIndex, newIndex);
+        onOrderChange(nextOrder);
       }
     }
-    return target;
   };
 
-  const handlePointerDown = (index: number, e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-
-    const targetEl = e.currentTarget;
-    const pointerId = e.pointerId;
-    try {
-      targetEl.setPointerCapture(pointerId);
-    } catch {
-      // JSDOM or unsupported environment
-    }
-
-    dragInfoRef.current = { startIndex: index, pointerId, element: targetEl };
-    setDraggedIndex(index);
-    setDragOverIndex(index);
-
-    const onPointerMove = (moveEvent: PointerEvent) => {
-      if (!dragInfoRef.current) return;
-      const targetIdx = getTargetIndexAtY(moveEvent.clientY);
-      if (targetIdx >= 0) {
-        setDragOverIndex(targetIdx);
-      }
-    };
-
-    const cleanup = () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerCancel);
-      if (dragInfoRef.current) {
-        try {
-          if (dragInfoRef.current.element.hasPointerCapture(dragInfoRef.current.pointerId)) {
-            dragInfoRef.current.element.releasePointerCapture(dragInfoRef.current.pointerId);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    };
-
-    const onPointerUp = (upEvent: PointerEvent) => {
-      const start = dragInfoRef.current;
-      dragInfoRef.current = null;
-      cleanup();
-
-      if (start) {
-        const finalTarget = getTargetIndexAtY(upEvent.clientY);
-        if (
-          finalTarget >= 0 &&
-          finalTarget !== start.startIndex &&
-          finalTarget < effectiveOrder.length
-        ) {
-          handleMove(start.startIndex, finalTarget);
-        }
-      }
-
-      setDraggedIndex(null);
-      setDragOverIndex(null);
-    };
-
-    const onPointerCancel = () => {
-      dragInfoRef.current = null;
-      cleanup();
-      setDraggedIndex(null);
-      setDragOverIndex(null);
-    };
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerCancel);
-  };
-
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      handleMove(index, index - 1);
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      handleMove(index, index + 1);
-    }
-  };
+  const itemIds = useMemo(() => sortedProviders.map((p) => p.id), [sortedProviders]);
 
   return (
-    <div className="provider-grid" ref={gridRef}>
-      {sortedProviders.map((provider, index) => {
-        const mode: ProviderUsageMode =
-          providerModes?.[provider.id] ??
-          (enabledProviderIds.includes(provider.id) ? "collect_and_display" : "disabled");
-        return (
-          <ProviderCard
-            key={provider.id}
-            provider={provider}
-            mode={mode}
-            isDragging={draggedIndex === index}
-            isDragOver={dragOverIndex === index && draggedIndex !== index}
-            onPointerDownHandle={(e) => handlePointerDown(index, e)}
-            onKeyDownHandle={(e) => handleKeyDown(index, e)}
-            onModeChange={(nextMode) => onModeChange(provider.id, nextMode)}
-          />
-        );
-      })}
-    </div>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+        <div className="provider-grid">
+          {sortedProviders.map((provider) => {
+            const mode: ProviderUsageMode =
+              providerModes?.[provider.id] ??
+              (enabledProviderIds.includes(provider.id) ? "collect_and_display" : "disabled");
+            return (
+              <SortableProviderCard
+                key={provider.id}
+                provider={provider}
+                mode={mode}
+                onModeChange={(nextMode) => onModeChange(provider.id, nextMode)}
+              />
+            );
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }
 
-function ProviderCard({
+function SortableProviderCard({
   provider,
   mode,
-  isDragging,
-  isDragOver,
-  onPointerDownHandle,
-  onKeyDownHandle,
   onModeChange,
 }: {
   provider: ProviderProbe;
   mode: ProviderUsageMode;
-  isDragging: boolean;
-  isDragOver: boolean;
-  onPointerDownHandle: (e: React.PointerEvent<HTMLDivElement>) => void;
-  onKeyDownHandle: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   onModeChange: (mode: ProviderUsageMode) => void;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: provider.id,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
   const isCodex = provider.id === "codex";
   const isCollecting = isCodex || mode === "collect_and_display" || mode === "collect_only";
   const isDisplaying = mode === "collect_and_display";
@@ -422,28 +352,21 @@ function ProviderCard({
 
   return (
     <article
-      className={[
-        "provider-card",
-        isDragging && "provider-card--dragging",
-        isDragOver && "provider-card--drag-over",
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      ref={setNodeRef}
+      style={style}
+      className={isDragging ? "provider-card provider-card--dragging" : "provider-card"}
       data-mode={mode}
     >
       <div className="provider-card__header">
-        <div className="provider-card__main">
-          <div
-            className="provider-card__drag-handle"
-            role="button"
-            tabIndex={0}
-            aria-label={`按住拖拽或按方向键调整 ${provider.displayName} 顺序`}
-            title="按住拖拽调整顺序"
-            onPointerDown={onPointerDownHandle}
-            onKeyDown={onKeyDownHandle}
-          >
-            <DotsSixVertical size={16} weight="bold" />
-          </div>
+        <div
+          className="provider-card__main"
+          {...attributes}
+          {...listeners}
+          tabIndex={0}
+          role="button"
+          aria-label={`按住拖拽或按方向键调整 ${provider.displayName} 顺序`}
+          title="按住拖拽调整顺序"
+        >
           <div className="provider-card__identity">
             <strong>{provider.displayName}</strong>
             <small>{provider.version ?? provider.commandName}</small>

@@ -67,6 +67,7 @@ describe("settings route contract", () => {
     expect(source).not.toContain("WarningCircle");
     expect(source).not.toContain("自动发现");
     expect(source).not.toContain("provider-card__reorder");
+    expect(source).not.toContain("DotsSixVertical");
     expect(source).not.toContain("<ArrowUp");
     expect(source).not.toContain("<ArrowDown");
     expect(source).toContain("provider-grid");
@@ -89,7 +90,8 @@ describe("settings route contract", () => {
     expect(markup).toContain('class="provider-grid"');
     expect(markup.match(/class="provider-card"/g)).toHaveLength(5);
     expect(markup).toContain("已连接");
-    expect(markup).toContain("provider-card__drag-handle");
+    expect(markup).toContain("provider-card__main");
+    expect(markup).not.toContain("provider-card__drag-handle");
     expect(markup).not.toContain("provider-card__reorder");
     expect(markup).not.toContain("provider-card__reorder-btn");
     expect(markup).toContain("provider-card__checkboxes");

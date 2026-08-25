@@ -1106,16 +1106,14 @@ select {
     transform 0.15s ease;
 }
 .provider-card--dragging {
-  opacity: 0.45;
-  border-style: dashed;
+  opacity: 0.88;
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 20%, var(--panel-subtle));
-  transform: scale(0.99);
-}
-.provider-card--drag-over {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel-subtle));
-  box-shadow: 0 0 0 1.5px var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 30%, var(--panel));
+  box-shadow:
+    0 12px 28px -6px rgba(0, 0, 0, 0.35),
+    0 4px 10px -2px rgba(0, 0, 0, 0.2),
+    0 0 0 1.5px var(--accent);
+  cursor: grabbing;
 }
 .provider-card__header,
 .provider-card__identity,
@@ -1132,32 +1130,23 @@ select {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
-}
-.provider-card__drag-handle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 5px;
-  color: var(--muted);
+  flex: 1 1 auto;
   cursor: grab;
-  flex: 0 0 auto;
   user-select: none;
   touch-action: none;
+  border-radius: 6px;
+  padding: 3px 6px;
+  margin: -3px -6px;
   transition:
-    color 0.12s ease,
-    background 0.12s ease;
+    background 0.12s ease,
+    color 0.12s ease;
 }
-.provider-card__drag-handle:hover,
-.provider-card__drag-handle:focus-visible {
-  color: var(--text);
-  background: color-mix(in srgb, var(--panel) 90%, transparent);
+.provider-card__main:hover,
+.provider-card__main:focus-visible {
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
 }
-.provider-card__drag-handle:active {
+.provider-card__main:active {
   cursor: grabbing;
-  color: var(--accent);
 }
 .provider-card__checkboxes {
   display: flex;
