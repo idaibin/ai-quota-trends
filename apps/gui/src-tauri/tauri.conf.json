@@ -22,7 +22,8 @@
         "center": true,
         "visible": false,
         "hiddenTitle": true,
-        "titleBarStyle": "Overlay"
+        "titleBarStyle": "Overlay",
+        "devtools": true
       },
       {
         "label": "tray",
@@ -37,6 +38,7 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "shadow": false,
+        "devtools": true,
         "windowEffects": {
           "effects": ["hudWindow"],
           "state": "active",

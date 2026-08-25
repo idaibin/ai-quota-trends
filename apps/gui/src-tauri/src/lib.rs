@@ -7,8 +7,9 @@ use std::{
     path::Path,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use ai_quota_core::{CollectorConfig, CollectorRuntime, Database, TokenUsageRuntime};
@@ -22,8 +23,16 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 
 static IS_TRAY_VISIBLE: AtomicBool = AtomicBool::new(false);
+static LAST_HIDE_TIME: AtomicU64 = AtomicU64::new(0);
 const OFFSCREEN_X: f64 = -10000.0;
 const OFFSCREEN_Y: f64 = -10000.0;
+
+fn current_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
 
 const TRAY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 const LEGACY_APP_IDENTIFIER: &str = "dev.idaibin.codex-quota-trends";
@@ -109,6 +118,7 @@ fn tray_toggle_action(visible: bool) -> TrayToggleAction {
 fn hide_tray(window: &tauri::WebviewWindow) {
     let _ = window.set_position(PhysicalPosition::new(OFFSCREEN_X, OFFSCREEN_Y));
     IS_TRAY_VISIBLE.store(false, Ordering::SeqCst);
+    LAST_HIDE_TIME.store(current_timestamp_ms(), Ordering::SeqCst);
 }
 
 fn show_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
@@ -145,6 +155,14 @@ fn open_settings(app: tauri::AppHandle) {
 fn toggle_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
     let Some(window) = app.get_webview_window("tray") else { return };
     let is_visible = IS_TRAY_VISIBLE.load(Ordering::SeqCst);
+    let now = current_timestamp_ms();
+    let last_hide = LAST_HIDE_TIME.load(Ordering::SeqCst);
+
+    // 核心防抖：如果距离上次失焦隐藏不足 250ms，说明这次托盘点击是“同一关闭动作的残留”，直接忽略
+    if !is_visible && (now.saturating_sub(last_hide) < 250) {
+        return;
+    }
+
     match tray_toggle_action(is_visible) {
         TrayToggleAction::Hide => {
             hide_tray(&window);
