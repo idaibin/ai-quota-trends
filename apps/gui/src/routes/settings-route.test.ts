@@ -109,4 +109,37 @@ describe("settings route contract", () => {
     expect(markup.indexOf("Claude CLI")).toBeLessThan(markup.indexOf("Qoder 国内版"));
     expect(markup.indexOf("Qoder 国内版")).toBeLessThan(markup.indexOf("Antigravity"));
   });
+
+  it("respects custom providerOrder and renders dual checkboxes with correct state", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ProviderCatalog, {
+        providers,
+        enabledProviderIds: ["antigravity", "codex", "claude"],
+        providerModes: {
+          codex: "collect_and_display",
+          antigravity: "collect_and_display",
+          claude: "collect_only",
+          zcode: "disabled",
+          "qoder-cn": "disabled",
+        },
+        providerOrder: ["antigravity", "codex", "claude", "zcode", "qoder-cn"],
+        onModeChange: () => undefined,
+        onOrderChange: () => undefined,
+      }),
+    );
+
+    // Antigravity should appear before Codex in custom order
+    expect(markup.indexOf("Antigravity")).toBeLessThan(markup.indexOf("Codex"));
+    expect(markup.indexOf("Codex")).toBeLessThan(markup.indexOf("Claude CLI"));
+    expect(markup.indexOf("Claude CLI")).toBeLessThan(markup.indexOf("ZCode"));
+    expect(markup.indexOf("ZCode")).toBeLessThan(markup.indexOf("Qoder 国内版"));
+
+    // Codex has disabled collect checkbox because it's locked
+    expect(markup).toContain('disabled="" aria-label="Codex 采集"');
+    expect(markup).toContain('title="Codex 为默认主工具，始终采集"');
+
+    // Title drag regions have proper accessibility attributes
+    expect(markup).toContain('aria-label="按住拖拽或按方向键调整 Codex 顺序"');
+    expect(markup).toContain('aria-label="按住拖拽或按方向键调整 Antigravity 顺序"');
+  });
 });

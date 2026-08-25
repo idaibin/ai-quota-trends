@@ -152,14 +152,22 @@ fn open_settings(app: tauri::AppHandle) {
     show_main(&app, Some("settings"));
 }
 
+fn should_ignore_tray_click_after_blur(
+    is_visible: bool,
+    now_ms: u64,
+    last_hide_ms: u64,
+    debounce_window_ms: u64,
+) -> bool {
+    !is_visible && (now_ms.saturating_sub(last_hide_ms) < debounce_window_ms)
+}
+
 fn toggle_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
     let Some(window) = app.get_webview_window("tray") else { return };
     let is_visible = IS_TRAY_VISIBLE.load(Ordering::SeqCst);
     let now = current_timestamp_ms();
     let last_hide = LAST_HIDE_TIME.load(Ordering::SeqCst);
 
-    // 核心防抖：如果距离上次失焦隐藏不足 250ms，说明这次托盘点击是“同一关闭动作的残留”，直接忽略
-    if !is_visible && (now.saturating_sub(last_hide) < 250) {
+    if should_ignore_tray_click_after_blur(is_visible, now, last_hide, 250) {
         return;
     }
 
@@ -321,7 +329,8 @@ mod tests {
 
     use super::{
         TrayToggleAction, format_remaining_title, migrate_legacy_app_data,
-        migrate_legacy_preferences, remove_legacy_autostart_entries, tray_toggle_action,
+        migrate_legacy_preferences, remove_legacy_autostart_entries,
+        should_ignore_tray_click_after_blur, tray_toggle_action,
     };
 
     #[test]
@@ -337,6 +346,21 @@ mod tests {
     fn shows_a_hidden_tray_without_waiting_for_a_webview_signal() {
         assert_eq!(tray_toggle_action(false), TrayToggleAction::Show);
         assert_eq!(tray_toggle_action(true), TrayToggleAction::Hide);
+    }
+
+    #[test]
+    fn ignores_tray_click_residue_within_blur_debounce_window() {
+        // When tray is already visible, click is always processed (to hide)
+        assert!(!should_ignore_tray_click_after_blur(true, 1000, 950, 250));
+
+        // When hidden and click arrives 50ms after blur hide (< 250ms), ignore it
+        assert!(should_ignore_tray_click_after_blur(false, 1000, 950, 250));
+
+        // When hidden and click arrives 300ms after blur hide (>= 250ms), allow reopening
+        assert!(!should_ignore_tray_click_after_blur(false, 1300, 1000, 250));
+
+        // When never hidden before (last_hide = 0), allow opening
+        assert!(!should_ignore_tray_click_after_blur(false, 1000, 0, 250));
     }
 
     #[test]
