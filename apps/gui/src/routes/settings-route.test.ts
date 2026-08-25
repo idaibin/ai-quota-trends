@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { demoSettings } from "../data/demo-data";
 import type { ProviderProbe } from "../types";
-import { ProviderCatalog } from "./settings-route";
+import { ProviderCatalog, SettingsRoute } from "./settings-route";
 import source from "./settings-route.tsx?raw";
 
 const providers: ProviderProbe[] = [
@@ -141,5 +141,48 @@ describe("settings route contract", () => {
     // Title drag regions have proper accessibility attributes
     expect(markup).toContain('aria-label="按住拖拽或按方向键调整 Codex 顺序"');
     expect(markup).toContain('aria-label="按住拖拽或按方向键调整 Antigravity 顺序"');
+  });
+
+  it("renders the full SettingsRoute page with all sections and controls", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SettingsRoute, {
+        settings: demoSettings,
+        onSettingsChange: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain('class="settings-page"');
+    expect(markup).toContain("常规");
+    expect(markup).toContain("模型与工具");
+    expect(markup).toContain("数据");
+    expect(markup).toContain("采集频率");
+    expect(markup).toContain("登录时启动");
+    expect(markup).toContain("仅显示菜单栏");
+    expect(markup).toContain("主题");
+    expect(markup).toContain("保留时间");
+    expect(markup).toContain("磁盘占用");
+  });
+
+  it("renders empty state when no providers are detected", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ProviderCatalog, {
+        providers: [],
+        enabledProviderIds: demoSettings.enabledProviderIds,
+        onModeChange: () => undefined,
+        onOrderChange: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain('class="provider-empty"');
+    expect(markup).toContain("正在检测本机工具…");
+  });
+
+  it("uses @dnd-kit integration without custom makeshift drag handlers", () => {
+    expect(source).toContain("@dnd-kit/core");
+    expect(source).toContain("@dnd-kit/sortable");
+    expect(source).toContain("@dnd-kit/utilities");
+    expect(source).toContain("useSortable");
+    expect(source).toContain("DndContext");
+    expect(source).toContain("SortableContext");
   });
 });
