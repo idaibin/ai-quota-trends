@@ -86,6 +86,10 @@ describe("settings route contract", () => {
     expect(markup).toContain('class="provider-grid"');
     expect(markup.match(/class="provider-card"/g)).toHaveLength(5);
     expect(markup).toContain("已连接");
+    expect(markup).toContain("provider-card__drag-handle");
+    expect(markup).toContain("provider-card__checkboxes");
+    expect(markup).toContain(">采集</span>");
+    expect(markup).toContain(">显示</span>");
     expect(markup).not.toContain("provider-row__status");
     expect(markup).not.toContain("provider-card__path");
     expect(markup).not.toContain("/usr/local/bin");

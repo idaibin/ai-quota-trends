@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, CalendarBlank, Cpu, Database, Info } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, CalendarBlank, Cpu, Database, DotsSixVertical, Info } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { getDatabaseStats, listProviders, saveSettings } from "../api/quota-api";
 import type { AppSettings, DatabaseStats, ProviderId, ProviderProbe, ProviderUsageMode } from "../types";
@@ -202,6 +202,9 @@ export function ProviderCatalog({
 }) {
   if (providers.length === 0) return <div className="provider-empty">正在检测本机工具…</div>;
 
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
   const effectiveOrder = useMemo(() => {
     const base =
       providerOrder && providerOrder.length > 0 ? [...providerOrder] : [...DEFAULT_PROVIDER_ORDER];
@@ -218,18 +221,44 @@ export function ProviderCatalog({
       .filter((p): p is ProviderProbe => p != null);
   }, [effectiveOrder, providers]);
 
-  const handleMove = (index: number, direction: "up" | "down") => {
-    const targetIndex = direction === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= effectiveOrder.length) return;
+  const handleMove = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= effectiveOrder.length || fromIndex === toIndex) return;
     const next = [...effectiveOrder];
-    const temp = next[index];
-    next[index] = next[targetIndex];
-    next[targetIndex] = temp;
+    const [item] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, item);
     onOrderChange(next);
   };
 
+  const handleDragStart = (index: number, e: React.DragEvent) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(index));
+  };
+
+  const handleDragOver = (index: number, e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDrop = (index: number, e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedIndex != null && draggedIndex !== index) {
+      handleMove(draggedIndex, index);
+    }
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
   return (
-    <div className="provider-grid">
+    <div className="provider-grid" onDragLeave={() => setDragOverIndex(null)}>
       {sortedProviders.map((provider, index) => {
         const mode: ProviderUsageMode =
           providerModes?.[provider.id] ??
@@ -237,12 +266,19 @@ export function ProviderCatalog({
         return (
           <ProviderCard
             key={provider.id}
+            index={index}
             provider={provider}
             mode={mode}
             isFirst={index === 0}
             isLast={index === sortedProviders.length - 1}
-            onMoveUp={() => handleMove(index, "up")}
-            onMoveDown={() => handleMove(index, "down")}
+            isDragging={draggedIndex === index}
+            isDragOver={dragOverIndex === index}
+            onMoveUp={() => handleMove(index, index - 1)}
+            onMoveDown={() => handleMove(index, index + 1)}
+            onDragStart={(e) => handleDragStart(index, e)}
+            onDragOver={(e) => handleDragOver(index, e)}
+            onDrop={(e) => handleDrop(index, e)}
+            onDragEnd={handleDragEnd}
             onModeChange={(nextMode) => onModeChange(provider.id, nextMode)}
           />
         );
@@ -252,22 +288,59 @@ export function ProviderCatalog({
 }
 
 function ProviderCard({
+  index: _index,
   provider,
   mode,
   isFirst,
   isLast,
+  isDragging,
+  isDragOver,
   onMoveUp,
   onMoveDown,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
   onModeChange,
 }: {
+  index: number;
   provider: ProviderProbe;
   mode: ProviderUsageMode;
   isFirst: boolean;
   isLast: boolean;
+  isDragging: boolean;
+  isDragOver: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
   onModeChange: (mode: ProviderUsageMode) => void;
 }) {
+  const isCodex = provider.id === "codex";
+  const isCollecting = isCodex || mode === "collect_and_display" || mode === "collect_only";
+  const isDisplaying = mode === "collect_and_display";
+
+  const handleCollectChange = (checked: boolean) => {
+    if (isCodex) return;
+    if (checked) {
+      onModeChange(isDisplaying ? "collect_and_display" : "collect_only");
+    } else {
+      onModeChange("disabled");
+    }
+  };
+
+  const handleDisplayChange = (checked: boolean) => {
+    if (checked) {
+      onModeChange("collect_and_display");
+    } else if (isCollecting) {
+      onModeChange("collect_only");
+    } else {
+      onModeChange("disabled");
+    }
+  };
+
   const available = provider.status === "available";
   const capability = available
     ? `已连接 · ${
@@ -280,11 +353,29 @@ function ProviderCard({
     : provider.status === "error"
       ? "检测异常 · 无法读取版本信息"
       : `未安装 · 未找到 ${provider.commandName}`;
+
   return (
-    <article className="provider-card" data-mode={mode}>
+    <article
+      className={[
+        "provider-card",
+        isDragging && "provider-card--dragging",
+        isDragOver && "provider-card--drag-over",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-mode={mode}
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+    >
       <div className="provider-card__header">
         <div className="provider-card__main">
-          <div className="provider-card__reorder" aria-label="排序">
+          <div className="provider-card__drag-handle" title="拖拽调整顺序" aria-hidden="true">
+            <DotsSixVertical size={16} weight="bold" />
+          </div>
+          <div className="provider-card__reorder" aria-label="微调排序">
             <button
               type="button"
               className="provider-card__reorder-btn"
@@ -293,7 +384,7 @@ function ProviderCard({
               aria-label={`上移 ${provider.displayName}`}
               title="上移"
             >
-              <ArrowUp size={11} weight="bold" />
+              <ArrowUp size={10} weight="bold" />
             </button>
             <button
               type="button"
@@ -303,7 +394,7 @@ function ProviderCard({
               aria-label={`下移 ${provider.displayName}`}
               title="下移"
             >
-              <ArrowDown size={11} weight="bold" />
+              <ArrowDown size={10} weight="bold" />
             </button>
           </div>
           <div className="provider-card__identity">
@@ -311,17 +402,33 @@ function ProviderCard({
             <small>{provider.version ?? provider.commandName}</small>
           </div>
         </div>
-        <div className="provider-card__control">
-          <SelectControl
-            aria-label={`${provider.displayName} 采集与显示模式`}
-            className="provider-card__mode-select"
-            value={mode}
-            onChange={(event) => onModeChange(event.target.value as ProviderUsageMode)}
+        <div className="provider-card__checkboxes">
+          <label
+            className={`provider-card__checkbox-label ${
+              isCodex ? "provider-card__checkbox-label--disabled" : ""
+            }`}
+            title={isCodex ? "Codex 为默认主工具，始终采集" : undefined}
           >
-            <option value="collect_and_display">采集和显示</option>
-            <option value="collect_only">采集不显示</option>
-            {provider.id !== "codex" && <option value="disabled">不采集不显示</option>}
-          </SelectControl>
+            <input
+              type="checkbox"
+              className="provider-card__checkbox"
+              checked={isCollecting}
+              disabled={isCodex}
+              onChange={(e) => handleCollectChange(e.target.checked)}
+              aria-label={`${provider.displayName} 采集`}
+            />
+            <span>采集</span>
+          </label>
+          <label className="provider-card__checkbox-label">
+            <input
+              type="checkbox"
+              className="provider-card__checkbox"
+              checked={isDisplaying}
+              onChange={(e) => handleDisplayChange(e.target.checked)}
+              aria-label={`${provider.displayName} 显示`}
+            />
+            <span>显示</span>
+          </label>
         </div>
       </div>
       <div

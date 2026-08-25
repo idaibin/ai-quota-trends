@@ -1,5 +1,28 @@
 # Design QA
 
+## Drag-and-drop provider reordering and dual checkbox (采集 / 显示) management — 2026-08-25
+
+- Scope:
+  - Implement smooth drag-and-drop reordering with `DotsSixVertical` drag handles for CLI providers in Settings.
+  - Convert provider configuration from dropdown mode selection to dual checkboxes: 「采集」 (Collect) and 「显示」 (Display).
+  - Codex as the primary source has its 「采集」 checkbox locked as checked, while its 「显示」 toggle remains configurable.
+  - Maintain synchronization between checkboxes, `ProviderUsageMode` (`collect_and_display`, `collect_only`, `disabled`), tray popover quota rows, and 「今日 Token 来源」.
+- Root causes:
+  - Users requested a more direct, intuitive drag-and-drop experience for reordering rather than only button clicks.
+  - Dual checkboxes provide immediate visual clarity on both data collection and UI display states without dropdown menus.
+- Correction:
+  - In `apps/gui/src/routes/settings-route.tsx`:
+    - Added HTML5 drag-and-drop listeners (`onDragStart`, `onDragOver`, `onDrop`, `onDragEnd`) with visual feedback (`.provider-card--dragging`, `.provider-card--drag-over`).
+    - Added `DotsSixVertical` grab handles alongside accessible `↑`/`↓` fine-tuning buttons.
+    - Replaced `<SelectControl>` with dual `<input type="checkbox">` labels (采集 and 显示).
+  - In `apps/gui/src/styles.css`: added styles for `.provider-card__drag-handle`, `.provider-card__checkboxes`, `.provider-card__checkbox-label`, `.provider-card--dragging`, and `.provider-card--drag-over`.
+  - In `apps/gui/src/routes/settings-route.test.ts`: updated test suite to verify drag handles, checkboxes, and ordering.
+- Validation: `just check`, `just test` (83 Rust tests + 66 frontend tests = 149 total), `just build-gui`, and all unit tests pass cleanly.
+- Installed runtime: installed at `/Applications/AI Quota Trends.app`, ad-hoc signed, strictly verified, executable SHA-256 `268d86cb939517f517557608ca8b767beb3708571fac2dce56c13ed73fd198ae`, running as PID `97202` with Codex app-server child PID `97212`. The prior installation is backed up at `/private/tmp/AI Quota Trends.app.backup-20260825-171412`.
+- Native visual boundary: CoreGraphics reports tray window `CGWindowID 12580` (Layer 5, 338×549 points) and main window `CGWindowID 12579` (Layer 0, 520×580 points) for PID `97202`. Native screenshot capture of the hidden popover layer remains `Not verified`.
+
+final result: source, tests, build, installation, process, and signature verified; opened native tray visual Not verified
+
 ## CLI provider reordering and 3-mode collection & display management — 2026-08-25
 
 - Scope:
