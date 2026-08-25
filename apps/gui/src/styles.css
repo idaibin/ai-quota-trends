@@ -1106,13 +1106,15 @@ select {
     transform 0.15s ease;
 }
 .provider-card--dragging {
-  opacity: 0.35;
+  opacity: 0.45;
   border-style: dashed;
   border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 20%, var(--panel-subtle));
+  transform: scale(0.99);
 }
 .provider-card--drag-over {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 35%, var(--panel-subtle));
+  background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel-subtle));
   box-shadow: 0 0 0 1.5px var(--accent);
 }
 .provider-card__header,
@@ -1136,49 +1138,26 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
   color: var(--muted);
   cursor: grab;
   flex: 0 0 auto;
   user-select: none;
-  transition: color 0.12s ease;
-}
-.provider-card:hover .provider-card__drag-handle {
-  color: var(--text);
-}
-.provider-card:active .provider-card__drag-handle {
-  cursor: grabbing;
-}
-.provider-card__reorder {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 0 0 auto;
-}
-.provider-card__reorder-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 14px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--muted);
-  background: var(--panel);
-  cursor: pointer;
+  touch-action: none;
   transition:
-    background 0.12s ease,
     color 0.12s ease,
-    border-color 0.12s ease;
+    background 0.12s ease;
 }
-.provider-card__reorder-btn:hover:not(:disabled) {
+.provider-card__drag-handle:hover,
+.provider-card__drag-handle:focus-visible {
   color: var(--text);
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
 }
-.provider-card__reorder-btn:disabled {
-  opacity: 0.28;
-  cursor: not-allowed;
+.provider-card__drag-handle:active {
+  cursor: grabbing;
+  color: var(--accent);
 }
 .provider-card__checkboxes {
   display: flex;

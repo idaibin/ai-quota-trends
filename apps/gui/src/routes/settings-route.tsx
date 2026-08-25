@@ -1,12 +1,24 @@
-import { ArrowDown, ArrowUp, CalendarBlank, Cpu, Database, DotsSixVertical, Info } from "@phosphor-icons/react";
-import { useEffect, useMemo, useState } from "react";
+import { CalendarBlank, Cpu, Database, DotsSixVertical, Info } from "@phosphor-icons/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getDatabaseStats, listProviders, saveSettings } from "../api/quota-api";
-import type { AppSettings, DatabaseStats, ProviderId, ProviderProbe, ProviderUsageMode } from "../types";
+import type {
+  AppSettings,
+  DatabaseStats,
+  ProviderId,
+  ProviderProbe,
+  ProviderUsageMode,
+} from "../types";
 import { formatBytes } from "../utils/format";
 import { Panel, SelectControl, Toggle } from "../components/ui";
 import { UpdateControl } from "../components/update-control";
 
-const DEFAULT_PROVIDER_ORDER: ProviderId[] = ["codex", "zcode", "claude", "qoder-cn", "antigravity"];
+const DEFAULT_PROVIDER_ORDER: ProviderId[] = [
+  "codex",
+  "zcode",
+  "claude",
+  "qoder-cn",
+  "antigravity",
+];
 
 export function SettingsRoute({
   settings,
@@ -204,6 +216,12 @@ export function ProviderCatalog({
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const dragInfoRef = useRef<{
+    startIndex: number;
+    pointerId: number;
+    element: HTMLElement;
+  } | null>(null);
 
   const effectiveOrder = useMemo(() => {
     const base =
@@ -229,36 +247,105 @@ export function ProviderCatalog({
     onOrderChange(next);
   };
 
-  const handleDragStart = (index: number, e: React.DragEvent) => {
+  const getTargetIndexAtY = (clientY: number): number => {
+    if (!gridRef.current) return -1;
+    const cards = Array.from(gridRef.current.querySelectorAll<HTMLElement>(".provider-card"));
+    if (cards.length === 0) return -1;
+    let target = cards.length - 1;
+    for (let i = 0; i < cards.length; i++) {
+      const rect = cards[i].getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (clientY < midY) {
+        target = i;
+        break;
+      }
+    }
+    return target;
+  };
+
+  const handlePointerDown = (index: number, e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+
+    const targetEl = e.currentTarget;
+    const pointerId = e.pointerId;
+    try {
+      targetEl.setPointerCapture(pointerId);
+    } catch {
+      // JSDOM or unsupported environment
+    }
+
+    dragInfoRef.current = { startIndex: index, pointerId, element: targetEl };
     setDraggedIndex(index);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", String(index));
+    setDragOverIndex(index);
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      if (!dragInfoRef.current) return;
+      const targetIdx = getTargetIndexAtY(moveEvent.clientY);
+      if (targetIdx >= 0) {
+        setDragOverIndex(targetIdx);
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+      if (dragInfoRef.current) {
+        try {
+          if (dragInfoRef.current.element.hasPointerCapture(dragInfoRef.current.pointerId)) {
+            dragInfoRef.current.element.releasePointerCapture(dragInfoRef.current.pointerId);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const onPointerUp = (upEvent: PointerEvent) => {
+      const start = dragInfoRef.current;
+      dragInfoRef.current = null;
+      cleanup();
+
+      if (start) {
+        const finalTarget = getTargetIndexAtY(upEvent.clientY);
+        if (
+          finalTarget >= 0 &&
+          finalTarget !== start.startIndex &&
+          finalTarget < effectiveOrder.length
+        ) {
+          handleMove(start.startIndex, finalTarget);
+        }
+      }
+
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+    };
+
+    const onPointerCancel = () => {
+      dragInfoRef.current = null;
+      cleanup();
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
   };
 
-  const handleDragOver = (index: number, e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (dragOverIndex !== index) {
-      setDragOverIndex(index);
+  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      handleMove(index, index - 1);
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      handleMove(index, index + 1);
     }
-  };
-
-  const handleDrop = (index: number, e: React.DragEvent) => {
-    e.preventDefault();
-    if (draggedIndex != null && draggedIndex !== index) {
-      handleMove(draggedIndex, index);
-    }
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedIndex(null);
-    setDragOverIndex(null);
   };
 
   return (
-    <div className="provider-grid" onDragLeave={() => setDragOverIndex(null)}>
+    <div className="provider-grid" ref={gridRef}>
       {sortedProviders.map((provider, index) => {
         const mode: ProviderUsageMode =
           providerModes?.[provider.id] ??
@@ -266,19 +353,12 @@ export function ProviderCatalog({
         return (
           <ProviderCard
             key={provider.id}
-            index={index}
             provider={provider}
             mode={mode}
-            isFirst={index === 0}
-            isLast={index === sortedProviders.length - 1}
             isDragging={draggedIndex === index}
-            isDragOver={dragOverIndex === index}
-            onMoveUp={() => handleMove(index, index - 1)}
-            onMoveDown={() => handleMove(index, index + 1)}
-            onDragStart={(e) => handleDragStart(index, e)}
-            onDragOver={(e) => handleDragOver(index, e)}
-            onDrop={(e) => handleDrop(index, e)}
-            onDragEnd={handleDragEnd}
+            isDragOver={dragOverIndex === index && draggedIndex !== index}
+            onPointerDownHandle={(e) => handlePointerDown(index, e)}
+            onKeyDownHandle={(e) => handleKeyDown(index, e)}
             onModeChange={(nextMode) => onModeChange(provider.id, nextMode)}
           />
         );
@@ -288,34 +368,20 @@ export function ProviderCatalog({
 }
 
 function ProviderCard({
-  index: _index,
   provider,
   mode,
-  isFirst,
-  isLast,
   isDragging,
   isDragOver,
-  onMoveUp,
-  onMoveDown,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
+  onPointerDownHandle,
+  onKeyDownHandle,
   onModeChange,
 }: {
-  index: number;
   provider: ProviderProbe;
   mode: ProviderUsageMode;
-  isFirst: boolean;
-  isLast: boolean;
   isDragging: boolean;
   isDragOver: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent) => void;
-  onDragEnd: () => void;
+  onPointerDownHandle: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onKeyDownHandle: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   onModeChange: (mode: ProviderUsageMode) => void;
 }) {
   const isCodex = provider.id === "codex";
@@ -364,38 +430,19 @@ function ProviderCard({
         .filter(Boolean)
         .join(" ")}
       data-mode={mode}
-      draggable
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
     >
       <div className="provider-card__header">
         <div className="provider-card__main">
-          <div className="provider-card__drag-handle" title="拖拽调整顺序" aria-hidden="true">
+          <div
+            className="provider-card__drag-handle"
+            role="button"
+            tabIndex={0}
+            aria-label={`按住拖拽或按方向键调整 ${provider.displayName} 顺序`}
+            title="按住拖拽调整顺序"
+            onPointerDown={onPointerDownHandle}
+            onKeyDown={onKeyDownHandle}
+          >
             <DotsSixVertical size={16} weight="bold" />
-          </div>
-          <div className="provider-card__reorder" aria-label="微调排序">
-            <button
-              type="button"
-              className="provider-card__reorder-btn"
-              onClick={onMoveUp}
-              disabled={isFirst}
-              aria-label={`上移 ${provider.displayName}`}
-              title="上移"
-            >
-              <ArrowUp size={10} weight="bold" />
-            </button>
-            <button
-              type="button"
-              className="provider-card__reorder-btn"
-              onClick={onMoveDown}
-              disabled={isLast}
-              aria-label={`下移 ${provider.displayName}`}
-              title="下移"
-            >
-              <ArrowDown size={10} weight="bold" />
-            </button>
           </div>
           <div className="provider-card__identity">
             <strong>{provider.displayName}</strong>

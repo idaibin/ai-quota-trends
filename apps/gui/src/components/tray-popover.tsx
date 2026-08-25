@@ -383,11 +383,9 @@ export function TrayPopover({
     };
     window.addEventListener("aqt-tray-shown", resizeToContent);
     let unlistenTrayShown: (() => void) | undefined;
-    void currentWindow
-      .listen("tray-shown", resizeToContent)
-      .then((unlisten: () => void) => {
-        unlistenTrayShown = unlisten;
-      });
+    void currentWindow.listen("tray-shown", resizeToContent).then((unlisten: () => void) => {
+      unlistenTrayShown = unlisten;
+    });
     const disconnect = observeTrayContentResize(
       [usageStackRef.current, tokenSectionRef.current],
       resizeToContent,

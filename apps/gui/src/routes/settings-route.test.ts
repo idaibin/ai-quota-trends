@@ -66,6 +66,9 @@ describe("settings route contract", () => {
     expect(source).not.toContain("CheckCircle");
     expect(source).not.toContain("WarningCircle");
     expect(source).not.toContain("自动发现");
+    expect(source).not.toContain("provider-card__reorder");
+    expect(source).not.toContain("<ArrowUp");
+    expect(source).not.toContain("<ArrowDown");
     expect(source).toContain("provider-grid");
     expect(source).toContain("采集频率");
     expect(source).toContain("登录时启动");
@@ -87,6 +90,8 @@ describe("settings route contract", () => {
     expect(markup.match(/class="provider-card"/g)).toHaveLength(5);
     expect(markup).toContain("已连接");
     expect(markup).toContain("provider-card__drag-handle");
+    expect(markup).not.toContain("provider-card__reorder");
+    expect(markup).not.toContain("provider-card__reorder-btn");
     expect(markup).toContain("provider-card__checkboxes");
     expect(markup).toContain(">采集</span>");
     expect(markup).toContain(">显示</span>");
