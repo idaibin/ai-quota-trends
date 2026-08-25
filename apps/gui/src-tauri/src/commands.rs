@@ -327,11 +327,15 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
 
 #[tauri::command]
 pub fn list_providers(state: State<'_, AppState>) -> Result<Vec<ProviderProbe>, String> {
-    let codex_path = {
+    let (codex_path, settings) = {
         let database = state.database.lock().map_err(|_| "database lock poisoned".to_owned())?;
-        provider_probe_inputs(&database)?.0
+        let settings = database.load_settings().map_err(|error| error.to_string())?;
+        (settings.codex_path.trim().to_owned(), settings)
     };
-    Ok(ai_quota_core::probe_providers_with_codex_path(&codex_path))
+    let mut probes = ai_quota_core::probe_providers_with_codex_path(&codex_path);
+    let order = settings.ordered_provider_ids();
+    probes.sort_by_key(|probe| order.iter().position(|&id| id == probe.id).unwrap_or(usize::MAX));
+    Ok(probes)
 }
 
 #[tauri::command]

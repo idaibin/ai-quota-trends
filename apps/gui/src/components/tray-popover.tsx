@@ -305,19 +305,31 @@ export function TrayPopover({
   const usageStackRef = useRef<HTMLElement>(null);
   const tokenSectionRef = useRef<HTMLElement>(null);
   const requestedHeightRef = useRef<number | null>(null);
-  const enabledProviderIds = useMemo(
-    () => new Set(settings?.enabledProviderIds ?? []),
-    [settings?.enabledProviderIds],
+
+  const providerOrder = useMemo(
+    () =>
+      settings?.providerOrder && settings.providerOrder.length > 0
+        ? settings.providerOrder
+        : PROVIDER_ORDER,
+    [settings?.providerOrder],
   );
+
+  const isProviderDisplaying = (providerId: string) => {
+    const typedId = providerId as ProviderId;
+    const mode = settings?.providerModes?.[typedId];
+    if (mode) return mode === "collect_and_display";
+    return (settings?.enabledProviderIds ?? []).includes(typedId);
+  };
+
   const visibleProviders = useMemo(
     () =>
-      PROVIDER_ORDER.flatMap((providerId) => {
+      providerOrder.flatMap((providerId) => {
         const provider =
           providers.find((candidate) => candidate.id === providerId) ??
           providerFallbacks.find((candidate) => candidate.id === providerId);
         return provider ? [provider] : [];
       }),
-    [providers],
+    [providerOrder, providers],
   );
   const quotasByProvider = useMemo(
     () => new Map((providerQuotas ?? []).map((quota) => [quota.id, quota])),
@@ -330,11 +342,11 @@ export function TrayPopover({
           providerId: provider.id,
           quotaWindow,
           providerQuota: quotasByProvider.get(provider.id),
-          enabled: enabledProviderIds.has(provider.id),
+          enabled: isProviderDisplaying(provider.id),
           loading: providerQuotasLoading,
         }),
       ),
-    [enabledProviderIds, providerQuotasLoading, quotasByProvider, quotaWindow, visibleProviders],
+    [isProviderDisplaying, providerQuotasLoading, quotasByProvider, quotaWindow, visibleProviders],
   );
 
   useEffect(() => {
@@ -567,6 +579,8 @@ export function TrayPopover({
           activity={data.tokenActivity}
           sectionRef={tokenSectionRef}
           appearance={appearance}
+          providerOrder={providerOrder}
+          isProviderDisplaying={isProviderDisplaying}
         />
       </main>
     </div>

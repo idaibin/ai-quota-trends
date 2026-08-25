@@ -1111,6 +1111,55 @@ select {
   justify-content: space-between;
   gap: 8px;
 }
+.provider-card__main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.provider-card__reorder {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.provider-card__reorder-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--panel);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+.provider-card__reorder-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.provider-card__reorder-btn:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+.provider-card__control {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.provider-card__mode-select {
+  height: 26px;
+  padding: 2px 20px 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+}
 .provider-card__identity {
   min-width: 0;
   align-items: flex-start;

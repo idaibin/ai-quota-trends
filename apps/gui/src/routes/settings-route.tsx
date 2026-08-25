@@ -1,10 +1,12 @@
-import { CalendarBlank, Cpu, Database, Info } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, CalendarBlank, Cpu, Database, Info } from "@phosphor-icons/react";
+import { useEffect, useMemo, useState } from "react";
 import { getDatabaseStats, listProviders, saveSettings } from "../api/quota-api";
-import type { AppSettings, DatabaseStats, ProviderProbe } from "../types";
+import type { AppSettings, DatabaseStats, ProviderId, ProviderProbe, ProviderUsageMode } from "../types";
 import { formatBytes } from "../utils/format";
 import { Panel, SelectControl, Toggle } from "../components/ui";
 import { UpdateControl } from "../components/update-control";
+
+const DEFAULT_PROVIDER_ORDER: ProviderId[] = ["codex", "zcode", "claude", "qoder-cn", "antigravity"];
 
 export function SettingsRoute({
   settings,
@@ -57,6 +59,50 @@ export function SettingsRoute({
     });
   };
 
+  const handleModeChange = (providerId: ProviderId, mode: ProviderUsageMode) => {
+    const nextModes: Partial<Record<ProviderId, ProviderUsageMode>> = {
+      ...draft.providerModes,
+      [providerId]: mode,
+    };
+    const nextOrder =
+      draft.providerOrder && draft.providerOrder.length > 0
+        ? draft.providerOrder
+        : [...DEFAULT_PROVIDER_ORDER];
+    const nextEnabled = nextOrder.filter(
+      (id) => (id === providerId ? mode : (nextModes[id] ?? "collect_and_display")) !== "disabled",
+    );
+    const next: AppSettings = {
+      ...draft,
+      providerModes: nextModes,
+      providerOrder: nextOrder,
+      enabledProviderIds: nextEnabled,
+    };
+    setDraft(next);
+    setSaved(false);
+    void saveSettings(next).then((stored) => {
+      onSettingsChange(stored);
+      setSaved(true);
+    });
+  };
+
+  const handleOrderChange = (nextOrder: ProviderId[]) => {
+    const nextModes = draft.providerModes;
+    const nextEnabled = nextOrder.filter(
+      (id) => (nextModes?.[id] ?? "collect_and_display") !== "disabled",
+    );
+    const next: AppSettings = {
+      ...draft,
+      providerOrder: nextOrder,
+      enabledProviderIds: nextEnabled,
+    };
+    setDraft(next);
+    setSaved(false);
+    void saveSettings(next).then((stored) => {
+      onSettingsChange(stored);
+      setSaved(true);
+    });
+  };
+
   return (
     <div className="settings-page">
       <SettingsSection icon={<CalendarBlank />} title="常规">
@@ -101,13 +147,10 @@ export function SettingsRoute({
         <ProviderCatalog
           providers={providers}
           enabledProviderIds={draft.enabledProviderIds}
-          onEnabledChange={(providerId, enabled) => {
-            if (providerId === "codex") return;
-            const next = enabled
-              ? [...draft.enabledProviderIds, providerId]
-              : draft.enabledProviderIds.filter((id) => id !== providerId);
-            update("enabledProviderIds", next);
-          }}
+          providerModes={draft.providerModes}
+          providerOrder={draft.providerOrder}
+          onModeChange={handleModeChange}
+          onOrderChange={handleOrderChange}
         />
       </SettingsSection>
       <SettingsSection icon={<Database />} title="数据">
@@ -145,36 +188,85 @@ export function SettingsRoute({
 export function ProviderCatalog({
   providers,
   enabledProviderIds,
-  onEnabledChange,
+  providerModes,
+  providerOrder,
+  onModeChange,
+  onOrderChange,
 }: {
   providers: ProviderProbe[];
   enabledProviderIds: AppSettings["enabledProviderIds"];
-  onEnabledChange: (providerId: ProviderProbe["id"], enabled: boolean) => void;
+  providerModes?: AppSettings["providerModes"];
+  providerOrder?: AppSettings["providerOrder"];
+  onModeChange: (providerId: ProviderId, mode: ProviderUsageMode) => void;
+  onOrderChange: (nextOrder: ProviderId[]) => void;
 }) {
   if (providers.length === 0) return <div className="provider-empty">正在检测本机工具…</div>;
 
+  const effectiveOrder = useMemo(() => {
+    const base =
+      providerOrder && providerOrder.length > 0 ? [...providerOrder] : [...DEFAULT_PROVIDER_ORDER];
+    for (const p of providers) {
+      if (!base.includes(p.id)) base.push(p.id);
+    }
+    return base;
+  }, [providerOrder, providers]);
+
+  const sortedProviders = useMemo(() => {
+    const probeMap = new Map(providers.map((p) => [p.id, p]));
+    return effectiveOrder
+      .map((id) => probeMap.get(id))
+      .filter((p): p is ProviderProbe => p != null);
+  }, [effectiveOrder, providers]);
+
+  const handleMove = (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= effectiveOrder.length) return;
+    const next = [...effectiveOrder];
+    const temp = next[index];
+    next[index] = next[targetIndex];
+    next[targetIndex] = temp;
+    onOrderChange(next);
+  };
+
   return (
     <div className="provider-grid">
-      {providers.map((provider) => (
-        <ProviderCard
-          key={provider.id}
-          provider={provider}
-          enabled={enabledProviderIds.includes(provider.id)}
-          onEnabledChange={(enabled) => onEnabledChange(provider.id, enabled)}
-        />
-      ))}
+      {sortedProviders.map((provider, index) => {
+        const mode: ProviderUsageMode =
+          providerModes?.[provider.id] ??
+          (enabledProviderIds.includes(provider.id) ? "collect_and_display" : "disabled");
+        return (
+          <ProviderCard
+            key={provider.id}
+            provider={provider}
+            mode={mode}
+            isFirst={index === 0}
+            isLast={index === sortedProviders.length - 1}
+            onMoveUp={() => handleMove(index, "up")}
+            onMoveDown={() => handleMove(index, "down")}
+            onModeChange={(nextMode) => onModeChange(provider.id, nextMode)}
+          />
+        );
+      })}
     </div>
   );
 }
 
 function ProviderCard({
   provider,
-  enabled,
-  onEnabledChange,
+  mode,
+  isFirst,
+  isLast,
+  onMoveUp,
+  onMoveDown,
+  onModeChange,
 }: {
   provider: ProviderProbe;
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
+  mode: ProviderUsageMode;
+  isFirst: boolean;
+  isLast: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onModeChange: (mode: ProviderUsageMode) => void;
 }) {
   const available = provider.status === "available";
   const capability = available
@@ -189,21 +281,48 @@ function ProviderCard({
       ? "检测异常 · 无法读取版本信息"
       : `未安装 · 未找到 ${provider.commandName}`;
   return (
-    <article className="provider-card">
+    <article className="provider-card" data-mode={mode}>
       <div className="provider-card__header">
-        <div className="provider-card__identity">
-          <strong>{provider.displayName}</strong>
-          <small>{provider.version ?? provider.commandName}</small>
+        <div className="provider-card__main">
+          <div className="provider-card__reorder" aria-label="排序">
+            <button
+              type="button"
+              className="provider-card__reorder-btn"
+              onClick={onMoveUp}
+              disabled={isFirst}
+              aria-label={`上移 ${provider.displayName}`}
+              title="上移"
+            >
+              <ArrowUp size={11} weight="bold" />
+            </button>
+            <button
+              type="button"
+              className="provider-card__reorder-btn"
+              onClick={onMoveDown}
+              disabled={isLast}
+              aria-label={`下移 ${provider.displayName}`}
+              title="下移"
+            >
+              <ArrowDown size={11} weight="bold" />
+            </button>
+          </div>
+          <div className="provider-card__identity">
+            <strong>{provider.displayName}</strong>
+            <small>{provider.version ?? provider.commandName}</small>
+          </div>
         </div>
-        {provider.id === "codex" ? (
-          <span className="provider-card__default">主要来源</span>
-        ) : (
-          <Toggle
-            checked={enabled}
-            onChange={onEnabledChange}
-            label={`${enabled ? "停用" : "启用"}${provider.displayName}`}
-          />
-        )}
+        <div className="provider-card__control">
+          <SelectControl
+            aria-label={`${provider.displayName} 采集与显示模式`}
+            className="provider-card__mode-select"
+            value={mode}
+            onChange={(event) => onModeChange(event.target.value as ProviderUsageMode)}
+          >
+            <option value="collect_and_display">采集和显示</option>
+            <option value="collect_only">采集不显示</option>
+            {provider.id !== "codex" && <option value="disabled">不采集不显示</option>}
+          </SelectControl>
+        </div>
       </div>
       <div
         className="provider-card__capability"

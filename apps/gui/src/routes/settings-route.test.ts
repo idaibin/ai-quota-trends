@@ -78,7 +78,8 @@ describe("settings route contract", () => {
       createElement(ProviderCatalog, {
         providers,
         enabledProviderIds: demoSettings.enabledProviderIds,
-        onEnabledChange: () => undefined,
+        onModeChange: () => undefined,
+        onOrderChange: () => undefined,
       }),
     );
 

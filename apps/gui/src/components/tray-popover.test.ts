@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { demoDashboard, demoSettings } from "../data/demo-data";
+import type { ProviderId } from "../types";
 import {
   TrayPopover,
   TRAY_INITIAL_HEIGHT,
@@ -571,5 +572,54 @@ describe("tray quota overview", () => {
     expect(markup).not.toContain("tray-usage-stack");
     expect(markup).not.toContain("tray-section-divider");
     expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token 来源</dt>');
+  });
+
+  it("respects providerModes (collect_only, disabled) and providerOrder in popover", () => {
+    const customSettings = {
+      ...demoSettings,
+      providerOrder: ["antigravity", "codex", "qoder-cn", "zcode", "claude"] as ProviderId[],
+      providerModes: {
+        "qoder-cn": "collect_only" as const,
+        zcode: "disabled" as const,
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(TrayPopover, {
+        data: demoDashboard,
+        settings: customSettings,
+        providers: [],
+        providerQuotas: [
+          {
+            id: "qoder-cn",
+            displayName: "Qoder 国内版",
+            status: "available",
+            plan: "Pro Trial",
+            expiresAtRaw: null,
+            expiresAtEpoch: null,
+            pools: [
+              {
+                name: "Plan Credits",
+                models: [],
+                used: 1,
+                total: 300,
+                remainingPercent: 99.67,
+                refreshAfterSeconds: null,
+                refreshRaw: null,
+              },
+            ],
+            message: null,
+          },
+        ],
+      }),
+    );
+
+    // Qoder is collect_only -> should not show quota meter row in popover
+    expect(markup).not.toContain('aria-label="Qoder 国内版 额度"');
+
+    // ZCode is disabled -> should not show in today token sources
+    expect(markup).not.toContain("<dt>ZCode</dt>");
+    // Codex should still be present
+    expect(markup).toContain("<dt>Codex</dt>");
   });
 });

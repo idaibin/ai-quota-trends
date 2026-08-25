@@ -172,9 +172,16 @@ export interface TokenTooltipDetails {
 
 export const tokenProviderTodayTotals = (
   models: ModelTokenActivity[] = [],
+  providerOrder: string[] = TOKEN_SUMMARY_PROVIDER_ORDER,
+  isProviderDisplaying?: (providerId: string) => boolean,
 ): TokenTooltipProvider[] => {
+  const allowedOrder = providerOrder.filter(
+    (providerId) =>
+      TOKEN_SUMMARY_PROVIDER_ORDER.includes(providerId) &&
+      (!isProviderDisplaying || isProviderDisplaying(providerId)),
+  );
   const providers = new Map<string, TokenTooltipProvider>(
-    TOKEN_SUMMARY_PROVIDER_ORDER.map((providerId) => [
+    allowedOrder.map((providerId) => [
       providerId,
       {
         providerId,
@@ -184,7 +191,7 @@ export const tokenProviderTodayTotals = (
     ]),
   );
   for (const model of models ?? []) {
-    if (!model || !TOKEN_SUMMARY_PROVIDER_ORDER.includes(model.providerId)) continue;
+    if (!model || !allowedOrder.includes(model.providerId)) continue;
     const tokens = Number.isFinite(model.today?.totalTokens)
       ? Math.max(0, model.today.totalTokens)
       : 0;
@@ -196,12 +203,15 @@ export const tokenProviderTodayTotals = (
     provider.tokens += tokens;
     providers.set(model.providerId, provider);
   }
-  return TOKEN_SUMMARY_PROVIDER_ORDER.map((providerId) => providers.get(providerId)!);
+  return allowedOrder
+    .map((providerId) => providers.get(providerId))
+    .filter((p): p is TokenTooltipProvider => p != null);
 };
 
 export const tokenTooltipDetails = (
   cell: TokenHeatmapCell,
   models: ModelTokenActivity[] = [],
+  providerOrder: string[] = PROVIDER_ORDER,
 ): TokenTooltipDetails => {
   const [, month, day] = cell.day.split("-").map(Number);
   const providers = new Map<
@@ -227,11 +237,11 @@ export const tokenTooltipDetails = (
     providers.set(model.providerId, provider);
   }
   const providerDetails = Array.from(providers.values()).sort((left, right) => {
-    const leftOrder = PROVIDER_ORDER.indexOf(left.providerId);
-    const rightOrder = PROVIDER_ORDER.indexOf(right.providerId);
+    const leftOrder = providerOrder.indexOf(left.providerId);
+    const rightOrder = providerOrder.indexOf(right.providerId);
     return (
-      (leftOrder < 0 ? PROVIDER_ORDER.length : leftOrder) -
-        (rightOrder < 0 ? PROVIDER_ORDER.length : rightOrder) ||
+      (leftOrder < 0 ? providerOrder.length : leftOrder) -
+        (rightOrder < 0 ? providerOrder.length : rightOrder) ||
       left.providerId.localeCompare(right.providerId)
     );
   });
@@ -334,8 +344,12 @@ function TokenActivityTooltip({
  * The accessible text form mirrors the structured visual tooltip without
  * exposing internal model identifiers or adding a second daily total.
  */
-export const formatTokenTooltip = (cell: TokenHeatmapCell, models: ModelTokenActivity[] = []) => {
-  const details = tokenTooltipDetails(cell, models);
+export const formatTokenTooltip = (
+  cell: TokenHeatmapCell,
+  models: ModelTokenActivity[] = [],
+  providerOrder: string[] = PROVIDER_ORDER,
+) => {
+  const details = tokenTooltipDetails(cell, models, providerOrder);
   const lines = [details.date];
   if (details.providers.length === 0) {
     lines.push("暂无明细");
@@ -353,10 +367,14 @@ export function TokenActivityCard({
   activity,
   sectionRef,
   appearance = "dark",
+  providerOrder = PROVIDER_ORDER,
+  isProviderDisplaying,
 }: {
   activity: TokenActivity;
   sectionRef?: Ref<HTMLElement>;
   appearance?: "light" | "dark";
+  providerOrder?: string[];
+  isProviderDisplaying?: (providerId: string) => boolean;
 }) {
   const currentDay = todayDay();
   const cells = buildTokenHeatmap(activity?.history ?? [], currentDay);
@@ -371,7 +389,11 @@ export function TokenActivityCard({
     count: cell.totalTokens,
     level: tokenHeatLevel(cell.totalTokens, maximum),
   }));
-  const providerTotals = tokenProviderTodayTotals(activity?.models ?? []);
+  const providerTotals = tokenProviderTodayTotals(
+    activity?.models ?? [],
+    providerOrder,
+    isProviderDisplaying,
+  );
   return (
     <section ref={sectionRef} className="tray-token-section" aria-label="Token 使用统计">
       <div className="tray-token-heatmap">
@@ -419,7 +441,7 @@ export function TokenActivityCard({
               const cell = cellsByDay.get(activityDay.date);
               return cell ? (
                 <TokenActivityTooltip
-                  details={tokenTooltipDetails(cell, activity?.models ?? [])}
+                  details={tokenTooltipDetails(cell, activity?.models ?? [], providerOrder)}
                   appearance={appearance}
                 >
                   {block}
@@ -434,7 +456,7 @@ export function TokenActivityCard({
       </div>
       <ul className="tray-token-accessible-details" aria-label="每日 Token 明细">
         {activeDays.map((cell) => (
-          <li key={cell.day}>{formatTokenTooltip(cell, activity?.models ?? [])}</li>
+          <li key={cell.day}>{formatTokenTooltip(cell, activity?.models ?? [], providerOrder)}</li>
         ))}
       </ul>
     </section>

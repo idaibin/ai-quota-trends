@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::providers::{ProviderId, default_enabled_provider_ids};
@@ -35,6 +37,27 @@ pub enum ThemeMode {
     System,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderUsageMode {
+    #[default]
+    CollectAndDisplay,
+    CollectOnly,
+    Disabled,
+}
+
+pub fn default_provider_modes() -> HashMap<ProviderId, ProviderUsageMode> {
+    let mut modes = HashMap::new();
+    for id in default_enabled_provider_ids() {
+        modes.insert(id, ProviderUsageMode::CollectAndDisplay);
+    }
+    modes
+}
+
+pub fn default_provider_order() -> Vec<ProviderId> {
+    default_enabled_provider_ids()
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -43,6 +66,10 @@ pub struct AppSettings {
     pub codex_path: String,
     #[serde(default = "default_enabled_provider_ids")]
     pub enabled_provider_ids: Vec<ProviderId>,
+    #[serde(default = "default_provider_modes")]
+    pub provider_modes: HashMap<ProviderId, ProviderUsageMode>,
+    #[serde(default = "default_provider_order")]
+    pub provider_order: Vec<ProviderId>,
     pub poll_interval_seconds: u64,
     #[serde(default = "default_tray_history_hours")]
     pub tray_history_hours: u64,
@@ -62,6 +89,8 @@ impl Default for AppSettings {
         Self {
             codex_path: String::new(),
             enabled_provider_ids: default_enabled_provider_ids(),
+            provider_modes: default_provider_modes(),
+            provider_order: default_provider_order(),
             poll_interval_seconds: 900,
             tray_history_hours: default_tray_history_hours(),
             rapid_drain_percent: 5.0,
@@ -81,6 +110,43 @@ impl AppSettings {
     pub(crate) fn codex_path_override(&self) -> Option<&str> {
         let path = self.codex_path.trim();
         (!path.is_empty()).then_some(path)
+    }
+
+    pub fn provider_mode(&self, provider_id: ProviderId) -> ProviderUsageMode {
+        if let Some(&mode) = self.provider_modes.get(&provider_id) {
+            if mode == ProviderUsageMode::Disabled || !self.enabled_provider_ids.contains(&provider_id) {
+                ProviderUsageMode::Disabled
+            } else {
+                mode
+            }
+        } else if self.enabled_provider_ids.contains(&provider_id) {
+            ProviderUsageMode::CollectAndDisplay
+        } else {
+            ProviderUsageMode::Disabled
+        }
+    }
+
+    pub fn is_provider_collecting(&self, provider_id: ProviderId) -> bool {
+        self.provider_mode(provider_id) != ProviderUsageMode::Disabled
+    }
+
+    pub fn is_provider_displaying(&self, provider_id: ProviderId) -> bool {
+        self.provider_mode(provider_id) == ProviderUsageMode::CollectAndDisplay
+    }
+
+    pub fn ordered_provider_ids(&self) -> Vec<ProviderId> {
+        let mut result = Vec::new();
+        for &id in &self.provider_order {
+            if !result.contains(&id) {
+                result.push(id);
+            }
+        }
+        for id in default_enabled_provider_ids() {
+            if !result.contains(&id) {
+                result.push(id);
+            }
+        }
+        result
     }
 
     pub fn normalize_legacy_retention(mut self) -> Self {
@@ -105,16 +171,42 @@ impl AppSettings {
         {
             self.enabled_provider_ids.insert(2, ProviderId::Claude);
         }
+        if !self.provider_order.contains(&ProviderId::Claude) {
+            let mut next_order = Vec::new();
+            for id in default_enabled_provider_ids() {
+                if self.provider_order.contains(&id) {
+                    next_order.push(id);
+                } else if id == ProviderId::Claude {
+                    next_order.push(ProviderId::Claude);
+                }
+            }
+            self.provider_order = next_order;
+        }
+        if !self.provider_modes.contains_key(&ProviderId::Claude) {
+            self.provider_modes.insert(
+                ProviderId::Claude,
+                if self.enabled_provider_ids.contains(&ProviderId::Claude) {
+                    ProviderUsageMode::CollectAndDisplay
+                } else {
+                    ProviderUsageMode::Disabled
+                },
+            );
+        }
         self
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
-        if !self.enabled_provider_ids.contains(&ProviderId::Codex) {
+        if !self.is_provider_collecting(ProviderId::Codex) {
             return Err("Codex must remain enabled as the menu bar quota source");
         }
         for (index, provider_id) in self.enabled_provider_ids.iter().enumerate() {
             if self.enabled_provider_ids[..index].contains(provider_id) {
                 return Err("enabled providers must be unique");
+            }
+        }
+        for (index, provider_id) in self.provider_order.iter().enumerate() {
+            if self.provider_order[..index].contains(provider_id) {
+                return Err("provider order must contain unique providers");
             }
         }
         if !(15..=3_600).contains(&self.poll_interval_seconds) {
@@ -239,5 +331,39 @@ mod tests {
     fn normalizes_legacy_poll_interval_to_fifteen_minutes() {
         let settings = AppSettings { poll_interval_seconds: 60, ..AppSettings::default() };
         assert_eq!(settings.normalize_legacy_poll_interval().poll_interval_seconds, 900);
+    }
+
+    #[test]
+    fn provider_usage_modes_and_ordering() {
+        use super::ProviderUsageMode;
+
+        let mut settings = AppSettings::default();
+        assert_eq!(settings.provider_mode(ProviderId::Codex), ProviderUsageMode::CollectAndDisplay);
+        assert!(settings.is_provider_collecting(ProviderId::Codex));
+        assert!(settings.is_provider_displaying(ProviderId::Codex));
+
+        settings.provider_modes.insert(ProviderId::Zcode, ProviderUsageMode::CollectOnly);
+        assert!(settings.is_provider_collecting(ProviderId::Zcode));
+        assert!(!settings.is_provider_displaying(ProviderId::Zcode));
+
+        settings.provider_modes.insert(ProviderId::Claude, ProviderUsageMode::Disabled);
+        assert!(!settings.is_provider_collecting(ProviderId::Claude));
+        assert!(!settings.is_provider_displaying(ProviderId::Claude));
+
+        settings.provider_order = vec![
+            ProviderId::Antigravity,
+            ProviderId::QoderCn,
+            ProviderId::Codex,
+        ];
+        assert_eq!(
+            settings.ordered_provider_ids(),
+            [
+                ProviderId::Antigravity,
+                ProviderId::QoderCn,
+                ProviderId::Codex,
+                ProviderId::Zcode,
+                ProviderId::Claude,
+            ]
+        );
     }
 }

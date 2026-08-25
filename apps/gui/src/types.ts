@@ -110,8 +110,12 @@ export interface AlertRecord {
   status: "open" | "resolved";
 }
 
+export type ProviderUsageMode = "collect_and_display" | "collect_only" | "disabled";
+
 export interface AppSettings {
   enabledProviderIds: ProviderId[];
+  providerModes?: Partial<Record<ProviderId, ProviderUsageMode>>;
+  providerOrder?: ProviderId[];
   pollIntervalSeconds: number;
   trayHistoryHours: number;
   rapidDrainPercent: number;

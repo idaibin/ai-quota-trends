@@ -461,4 +461,46 @@ describe("token activity heatmap", () => {
     );
     expect(formatTokenTooltip(cell, models)).not.toMatch(/(?:^|\n)Token\b/);
   });
+
+  it("filters out disabled/hidden providers and respects custom provider order", () => {
+    const model = (providerId: string, tokens: number) => ({
+      providerId,
+      modelId: `${providerId}-model`,
+      displayName: `${providerId} model`,
+      today: {
+        totalTokens: tokens,
+        inputTokens: tokens,
+        cachedInputTokens: 0,
+        nonCachedInputTokens: tokens,
+        sessionCount: 1,
+        callCount: 1,
+      },
+      history: [],
+    });
+
+    const models = [
+      model("codex", 100),
+      model("zcode", 50),
+      model("claude", 30),
+      model("antigravity", 20),
+    ];
+
+    // Case 1: zcode and claude are hidden / disabled
+    const filteredTotals = tokenProviderTodayTotals(
+      models,
+      ["codex", "zcode", "claude", "antigravity"],
+      (id) => id !== "zcode" && id !== "claude",
+    );
+    expect(filteredTotals.map((p) => p.providerId)).toEqual(["codex", "antigravity"]);
+    expect(filteredTotals.map((p) => p.tokens)).toEqual([100, 20]);
+
+    // Case 2: custom order: antigravity first
+    const reorderedTotals = tokenProviderTodayTotals(
+      models,
+      ["antigravity", "codex", "claude", "zcode"],
+      (id) => id !== "claude",
+    );
+    expect(reorderedTotals.map((p) => p.providerId)).toEqual(["antigravity", "codex", "zcode"]);
+    expect(reorderedTotals.map((p) => p.tokens)).toEqual([20, 100, 50]);
+  });
 });

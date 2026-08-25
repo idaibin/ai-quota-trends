@@ -1,5 +1,25 @@
 # Design QA
 
+## CLI provider reordering and 3-mode collection & display management — 2026-08-25
+
+- Scope:
+  - Add CLI provider reordering in Settings (Up/Down buttons) to customize provider priority order across the application.
+  - Implement 3-mode collection & display options per provider (`collect_and_display` / 采集和显示, `collect_only` / 采集不显示, `disabled` / 不采集不显示).
+  - Synchronize popover quota meters and "今日 Token 来源" breakdown so that disabled or collect-only providers are properly hidden from the tray popover, and active providers are displayed in the configured custom order.
+- Root causes:
+  - Previously, `TokenActivityCard` hardcoded the summary providers list and did not respect the user's enabled provider settings or custom display preferences, causing disabled tools (e.g. ZCode, Claude CLI) to still show `0` under "今日 Token 来源".
+  - Provider list in Settings was fixed and could not be sorted.
+- Correction:
+  - In `crates/ai-quota-core/src/quota/model.rs`: added `ProviderUsageMode` enum (`CollectAndDisplay`, `CollectOnly`, `Disabled`), `provider_modes` map, `provider_order` list, and `ordered_provider_ids()` / `is_provider_displaying()` methods to `AppSettings`.
+  - In `apps/gui/src/routes/settings-route.tsx`: replaced binary toggles with accessible reorder buttons (`↑`/`↓`) and 3-mode Select controls (`采集和显示`, `采集不显示`, `不采集不显示`).
+  - In `apps/gui/src/components/tray-popover.tsx`: ordered quota rows according to `providerOrder` and filtered out hidden providers via `is_provider_displaying`.
+  - In `apps/gui/src/components/token-activity-card.tsx`: dynamically filtered "今日 Token 来源" and heatmap tooltips based on `providerOrder` and `isProviderDisplaying`.
+- Validation: `just check`, `just test` (83 Rust tests + 66 frontend tests = 149 total), `just build-gui`, and all unit tests pass cleanly.
+- Installed runtime: installed at `/Applications/AI Quota Trends.app`, ad-hoc signed, strictly verified, executable SHA-256 `6d3ed0ee6368072d9df5b4ade5c2166f876fdf1409ee4ec6b756d30e91bfe8f5`, running as PID `86496` with Codex app-server child PID `86510`. The prior installation is backed up at `/private/tmp/AI Quota Trends.app.backup-20260825-155017`.
+- Native visual boundary: CoreGraphics reports tray window `CGWindowID 11514` (Layer 5, 338×571 points) and main window `CGWindowID 11513` (Layer 0, 520×580 points) for PID `86496`. Native screenshot capture of the hidden popover layer remains `Not verified`.
+
+final result: source, tests, build, installation, process, and signature verified; opened native tray visual Not verified
+
 ## Codex general usage limit filtering, white screen elimination, and v7 database migration — 2026-08-25
 
 - Scope:

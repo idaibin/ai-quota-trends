@@ -743,6 +743,13 @@ impl Database {
             let previous = self.load_settings()?;
             settings.codex_path = previous.codex_path;
         }
+        if !settings.provider_modes.is_empty() {
+            settings.enabled_provider_ids = settings
+                .ordered_provider_ids()
+                .into_iter()
+                .filter(|id| settings.is_provider_collecting(*id))
+                .collect();
+        }
         let value = serde_json::to_string(&settings)?;
         self.connection.execute("INSERT INTO settings(key, value) VALUES('app', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [value])?;
         Ok(())
