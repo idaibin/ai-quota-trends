@@ -11,7 +11,7 @@ use std::{
 use ai_quota_core::{CollectorConfig, CollectorRuntime, Database, TokenUsageRuntime};
 use state::AppState;
 use tauri::{
-    Manager, PhysicalPosition, RunEvent, WindowEvent,
+    Emitter, Manager, PhysicalPosition, RunEvent, WindowEvent,
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -80,10 +80,8 @@ fn current_remaining_title(database: &Arc<Mutex<Database>>) -> String {
 
 fn show_main(app: &tauri::AppHandle, route: Option<&str>) {
     if let Some(window) = app.get_webview_window("main") {
-        if route == Some("settings") {
-            let _ = window.eval(
-                "window.dispatchEvent(new CustomEvent('aqt-route-requested', { detail: 'settings' }))",
-            );
+        if let Some(r) = route {
+            let _ = window.emit("route-requested", r);
         }
         let _ = window.show();
         let _ = window.unminimize();
@@ -108,6 +106,7 @@ fn show_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
     let _ = window.set_position(PhysicalPosition::new((anchor_x - width / 2.0).max(8.0), anchor_y));
     let _ = window.show();
     let _ = window.set_focus();
+    let _ = window.emit("tray-shown", ());
 }
 
 #[tauri::command]
@@ -138,12 +137,7 @@ pub fn run() {
             "[AQT] WebKit content process for webview `{}` terminated; reloading",
             webview.label()
         );
-        if let Err(error) = webview.reload() {
-            eprintln!(
-                "[AQT] failed to reload webview `{}` after WebKit content process termination: {error}",
-                webview.label()
-            );
-        }
+        let _ = webview.reload();
     });
 
     let app = builder

@@ -344,6 +344,7 @@ export function TrayPopover({
 
   useLayoutEffect(() => {
     if (!isTauriRuntime()) return;
+    const currentWindow = getCurrentWindow();
     const resizeToContent = () => {
       const nextHeight = calculateTrayHeight({
         providerStackHeight: usageStackRef.current?.scrollHeight ?? 0,
@@ -357,16 +358,33 @@ export function TrayPopover({
         return;
       }
       requestedHeightRef.current = nextHeight;
-      void getCurrentWindow()
-        .setSize(new LogicalSize(TRAY_WIDTH, nextHeight))
+      void Promise.all([currentWindow.outerSize(), currentWindow.scaleFactor()])
+        .then(([size, scale]) => {
+          const currentHeight = Math.round(size.height / (scale || 1));
+          if (Math.abs(currentHeight - nextHeight) >= 2) {
+            return currentWindow.setSize(new LogicalSize(TRAY_WIDTH, nextHeight));
+          }
+        })
         .catch(() => {
           requestedHeightRef.current = null;
         });
     };
-    return observeTrayContentResize(
+    window.addEventListener("aqt-tray-shown", resizeToContent);
+    let unlistenTrayShown: (() => void) | undefined;
+    void currentWindow
+      .listen("tray-shown", resizeToContent)
+      .then((unlisten: () => void) => {
+        unlistenTrayShown = unlisten;
+      });
+    const disconnect = observeTrayContentResize(
       [usageStackRef.current, tokenSectionRef.current],
       resizeToContent,
     );
+    return () => {
+      window.removeEventListener("aqt-tray-shown", resizeToContent);
+      if (unlistenTrayShown) unlistenTrayShown();
+      disconnect();
+    };
   }, [data, now, providerQuotasLoading, quotaWindow, visibleQuotaProviders]);
 
   return (

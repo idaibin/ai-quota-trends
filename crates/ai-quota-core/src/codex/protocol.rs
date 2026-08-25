@@ -103,18 +103,15 @@ pub struct RateLimitResetCredit {
 pub fn normalize_rate_limits(value: Value, created_at: i64) -> Result<Vec<QuotaSnapshot>> {
     let response: RateLimitsResponse =
         serde_json::from_value(value).context("invalid account/rateLimits/read response")?;
-    let snapshots = if let Some(by_limit_id) =
-        response.rate_limits_by_limit_id.filter(|map| !map.is_empty())
+    let codex_snapshot = if let Some(by_limit_id) = response.rate_limits_by_limit_id.as_ref()
+        && let Some(codex) = by_limit_id.get("codex")
     {
-        by_limit_id
-            .into_iter()
-            .map(|(key, snapshot)| normalize_snapshot(snapshot, key, created_at))
-            .collect()
+        normalize_snapshot(codex.clone(), "codex".to_owned(), created_at)
     } else {
         let fallback = response.rate_limits.limit_id.clone().unwrap_or_else(|| "codex".to_owned());
-        vec![normalize_snapshot(response.rate_limits, fallback, created_at)]
+        normalize_snapshot(response.rate_limits, fallback, created_at)
     };
-    Ok(snapshots)
+    Ok(vec![codex_snapshot])
 }
 
 pub fn normalize_account_token_usage(value: Value) -> Result<AccountTokenUsageResponse> {
@@ -159,9 +156,17 @@ mod tests {
                     "limitName": "Codex",
                     "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 2000 },
                     "secondary": { "usedPercent": 32, "windowDurationMins": 10080, "resetsAt": 3000 }
+                },
+                "codex_bengalfox": {
+                    "limitId": "codex_bengalfox",
+                    "limitName": "GPT-5.3-Codex-Spark",
+                    "primary": { "usedPercent": 0, "windowDurationMins": 300, "resetsAt": 2000 },
+                    "secondary": { "usedPercent": 53, "windowDurationMins": 10080, "resetsAt": 3000 }
                 }
             }
         }), 1000).unwrap();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].limit_id, "codex");
         assert_eq!(snapshots[0].windows.len(), 2);
         assert_eq!(snapshots[0].windows[1].window_minutes, Some(10_080));
     }

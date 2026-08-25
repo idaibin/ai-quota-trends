@@ -80,10 +80,28 @@ export default function App() {
     void load();
     if (window.__TAURI_INTERNALS__) setWindowLabel(getCurrentWindow().label);
     const handleFocus = () => void load();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void load();
+    };
     window.addEventListener("focus", handleFocus);
+    window.addEventListener("aqt-tray-shown", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    let unlistenTrayShown: (() => void) | undefined;
+    if (window.__TAURI_INTERNALS__) {
+      void getCurrentWindow()
+        .listen("tray-shown", handleFocus)
+        .then((unlisten) => {
+          unlistenTrayShown = unlisten;
+        });
+    }
+
     const timer = window.setInterval(() => void load(), 5_000);
     return () => {
       window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("aqt-tray-shown", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (unlistenTrayShown) unlistenTrayShown();
       window.clearInterval(timer);
     };
   }, [load]);
@@ -127,13 +145,31 @@ export default function App() {
     };
     void refreshProviderQuotas(true);
     const handleTrayFocus = () => void refreshProviderQuotas(false);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void refreshProviderQuotas(false);
+    };
     window.addEventListener("focus", handleTrayFocus);
+    window.addEventListener("aqt-tray-shown", handleTrayFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    let unlistenTrayShown: (() => void) | undefined;
+    if (window.__TAURI_INTERNALS__) {
+      void getCurrentWindow()
+        .listen("tray-shown", handleTrayFocus)
+        .then((unlisten) => {
+          unlistenTrayShown = unlisten;
+        });
+    }
+
     const timer = window.setInterval(
       () => void refreshProviderQuotas(false),
       PROVIDER_QUOTA_REFRESH_INTERVAL_MS,
     );
     return () => {
       window.removeEventListener("focus", handleTrayFocus);
+      window.removeEventListener("aqt-tray-shown", handleTrayFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      if (unlistenTrayShown) unlistenTrayShown();
       window.clearInterval(timer);
     };
   }, [isTraySurface, settingsReady]);
@@ -175,9 +211,22 @@ export default function App() {
     };
     window.addEventListener("storage", handleStorage);
     window.addEventListener("aqt-route-requested", handleRouteRequest);
+
+    let unlistenRouteRequested: (() => void) | undefined;
+    if (window.__TAURI_INTERNALS__) {
+      void getCurrentWindow()
+        .listen<string>("route-requested", (event) => {
+          applyRoute(event.payload);
+        })
+        .then((unlisten) => {
+          unlistenRouteRequested = unlisten;
+        });
+    }
+
     return () => {
       window.removeEventListener("storage", handleStorage);
       window.removeEventListener("aqt-route-requested", handleRouteRequest);
+      if (unlistenRouteRequested) unlistenRouteRequested();
     };
   }, []);
 
@@ -222,7 +271,17 @@ export default function App() {
     saveCachedJson(CACHE_KEYS.SETTINGS, nextSettings);
   };
 
-  if (!dashboard || !settings)
+  if (!dashboard || !settings) {
+    if (isTraySurface) {
+      return (
+        <div
+          className="tray-popover tray-popover--empty"
+          style={{ display: "grid", placeContent: "center", height: "100%" }}
+        >
+          <div style={{ color: "var(--tray-muted)", fontSize: "12px" }}>正在读取本地额度…</div>
+        </div>
+      );
+    }
     return (
       <div className="loading-screen">
         <img src="/app-mark.png" alt="" />
@@ -230,6 +289,7 @@ export default function App() {
         {error && <span>读取失败，请稍后重试</span>}
       </div>
     );
+  }
   if (isTraySurface)
     return (
       <TrayPopover

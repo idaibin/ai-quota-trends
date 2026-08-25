@@ -12,6 +12,13 @@ document.documentElement.dataset.runtime = window.__TAURI_INTERNALS__ ? "tauri" 
 document.documentElement.dataset.surface =
   new URLSearchParams(window.location.search).get("surface") ?? "main";
 
+declare global {
+  interface Window {
+    __AQT_MOUNTED__?: boolean;
+  }
+}
+window.__AQT_MOUNTED__ = true;
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>

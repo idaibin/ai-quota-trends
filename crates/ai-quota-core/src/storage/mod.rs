@@ -163,7 +163,13 @@ impl Database {
         if previous_schema_version < 6 {
             self.migrate_legacy_provider_catalog()?;
         }
-        self.connection.pragma_update(None, "user_version", 6)?;
+        if previous_schema_version < 7 {
+            self.connection.execute(
+                "DELETE FROM quota_snapshots WHERE limit_id != 'codex'",
+                [],
+            )?;
+        }
+        self.connection.pragma_update(None, "user_version", 7)?;
         Ok(())
     }
 
@@ -308,6 +314,9 @@ impl Database {
     }
 
     pub fn latest_any_snapshot(&self) -> Result<Option<QuotaSnapshot>> {
+        if let Some(codex) = self.latest_snapshot("codex")? {
+            return Ok(Some(codex));
+        }
         let limit_id = self
             .connection
             .query_row(
@@ -320,7 +329,7 @@ impl Database {
                  ) AS latest
                  ON latest.limit_id = snapshot.limit_id
                     AND latest.created_at = snapshot.created_at
-                 ORDER BY snapshot.used_percent DESC, snapshot.created_at DESC, snapshot.id ASC
+                 ORDER BY snapshot.created_at DESC, snapshot.id ASC
                  LIMIT 1",
                 [],
                 |row| row.get::<_, String>(0),
@@ -1139,7 +1148,7 @@ mod tests {
                 .connection
                 .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
                 .unwrap(),
-            6
+            7
         );
         assert_eq!(
             database.token_activity("2026-07-22", "2025-07-18").unwrap(),
@@ -1507,16 +1516,16 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_prefers_the_most_used_latest_limit() {
+    fn dashboard_prefers_codex_limit_over_other_limits() {
         let mut database = Database::open_in_memory().unwrap();
-        let mut primary = snapshot(100, 32.0);
-        primary.limit_id = "primary".into();
-        let mut supplemental = snapshot(200, 0.0);
-        supplemental.limit_id = "supplemental".into();
-        database.save_snapshot_if_changed(&primary, "{}").unwrap();
+        let mut codex = snapshot(100, 10.0);
+        codex.limit_id = "codex".into();
+        let mut supplemental = snapshot(200, 53.0);
+        supplemental.limit_id = "codex_bengalfox".into();
+        database.save_snapshot_if_changed(&codex, "{}").unwrap();
         database.save_snapshot_if_changed(&supplemental, "{}").unwrap();
 
-        assert_eq!(database.latest_any_snapshot().unwrap().unwrap().limit_id, "primary");
+        assert_eq!(database.latest_any_snapshot().unwrap().unwrap().limit_id, "codex");
     }
 
     #[test]
@@ -1567,5 +1576,37 @@ mod tests {
         assert_eq!(result.deleted_rows, 1);
         assert!(database.latest_any_snapshot().unwrap().is_none());
         assert_eq!(result.after.reclaimable_bytes, 0);
+    }
+
+    #[test]
+    fn v7_migration_removes_non_codex_quota_snapshots() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("v6-snapshots.db");
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE quota_snapshots(
+                    id INTEGER PRIMARY KEY,
+                    created_at INTEGER NOT NULL,
+                    limit_id TEXT NOT NULL,
+                    limit_name TEXT,
+                    window_minutes INTEGER,
+                    used_percent REAL NOT NULL,
+                    reset_at INTEGER,
+                    raw_json TEXT NOT NULL
+                );
+                PRAGMA user_version = 6;
+                INSERT INTO quota_snapshots(id, created_at, limit_id, limit_name, window_minutes, used_percent, reset_at, raw_json)
+                VALUES (1, 100, 'codex', 'Codex', 300, 10.0, 2000, '{}'),
+                       (2, 200, 'codex_bengalfox', 'GPT-5.3-Codex-Spark', 300, 50.0, 2000, '{}');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let database = Database::open(&path).unwrap();
+        let snapshots = database.history("codex_bengalfox", Some(300), 0).unwrap();
+        assert_eq!(snapshots.len(), 0);
+        let codex_snapshots = database.history("codex", Some(300), 0).unwrap();
+        assert_eq!(codex_snapshots.len(), 1);
     }
 }

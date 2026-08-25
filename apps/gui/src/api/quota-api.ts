@@ -190,13 +190,13 @@ export async function resetLocalData(): Promise<DatabaseCleanupResult> {
 }
 
 export async function getAppVersion(): Promise<string> {
-  return isTauriRuntime() ? invoke<string>("get_app_version") : "0.1.0";
+  return isTauriRuntime() ? invoke<string>("get_app_version") : "0.1.1";
 }
 
 export async function checkForUpdate(): Promise<UpdateCheckResult> {
   return isTauriRuntime()
     ? invoke<UpdateCheckResult>("check_for_update")
-    : { currentVersion: "0.1.0", available: false, targetVersion: null, notes: null };
+    : { currentVersion: "0.1.1", available: false, targetVersion: null, notes: null };
 }
 
 export async function installUpdate(): Promise<UpdateInstallResult> {

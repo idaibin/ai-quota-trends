@@ -496,14 +496,21 @@ fn parse_antigravity_quota(output: &str) -> ProviderQuota {
             });
             current_pool = Some(pools.len() - 1);
         } else if let Some(index) = current_pool {
+            if line.to_ascii_lowercase().contains("disabled:") {
+                continue;
+            }
             if pools[index].remaining_percent.is_none()
                 && let Some(percent) = parse_percent(line)
             {
                 pools[index].remaining_percent = Some(percent.clamp(0.0, 100.0));
             }
-            if line.to_ascii_lowercase().contains("refreshes in") {
-                pools[index].refresh_raw = Some(line.to_owned());
-                pools[index].refresh_after_seconds = parse_refresh_duration(line);
+            if line.to_ascii_lowercase().contains("refresh") {
+                if pools[index].refresh_raw.is_none() {
+                    pools[index].refresh_raw = Some(line.to_owned());
+                }
+                if pools[index].refresh_after_seconds.is_none() {
+                    pools[index].refresh_after_seconds = parse_refresh_duration(line);
+                }
             }
         }
     }
@@ -597,7 +604,7 @@ fn parse_percent(line: &str) -> Option<f64> {
 
 fn parse_refresh_duration(line: &str) -> Option<u64> {
     let lower = line.to_ascii_lowercase();
-    let value = lower.split_once("refreshes in")?.1;
+    let value = lower.split_once("refreshes in").or_else(|| lower.split_once("refresh in"))?.1;
     let mut total = 0_u64;
     let mut found = false;
     let mut number = String::new();
@@ -1000,6 +1007,7 @@ fn read_antigravity_model_activity_from_dir(
             continue;
         };
         let session_timestamp = antigravity_session_timestamp(&connection, &path);
+        let step_timestamps = antigravity_step_timestamps(&connection);
         let Ok(mut statement) = connection.prepare("SELECT data FROM gen_metadata ORDER BY idx")
         else {
             continue;
@@ -1030,10 +1038,14 @@ fn read_antigravity_model_activity_from_dir(
                 continue;
             }
 
-            let timestamp = proto_message_field(chat_model, 9)
-                .and_then(|generation| proto_message_field(generation, 4))
-                .and_then(proto_timestamp_ms)
-                .filter(|timestamp| *timestamp > 0)
+            let timestamp = antigravity_last_step_index(chat_model)
+                .and_then(|step_idx| step_timestamps.get(&step_idx).copied())
+                .or_else(|| {
+                    proto_message_field(chat_model, 9)
+                        .and_then(|generation| proto_message_field(generation, 4))
+                        .and_then(proto_timestamp_ms)
+                        .filter(|timestamp| *timestamp > 0)
+                })
                 .unwrap_or(session_timestamp);
             let Some(day) = DateTime::from_timestamp_millis(timestamp).map(|timestamp| {
                 timestamp.with_timezone(&chrono::Local).format("%Y-%m-%d").to_string()
@@ -1094,6 +1106,42 @@ fn read_antigravity_model_activity_from_dir(
             history,
         })
         .collect())
+}
+
+fn antigravity_step_timestamps(connection: &Connection) -> HashMap<i64, i64> {
+    let Ok(mut statement) = connection.prepare("SELECT idx, metadata FROM steps") else {
+        return HashMap::new();
+    };
+    let Ok(rows) = statement.query_map([], |row| {
+        let idx = row.get::<_, i64>(0)?;
+        let metadata = row.get::<_, Vec<u8>>(1)?;
+        Ok((idx, metadata))
+    }) else {
+        return HashMap::new();
+    };
+    let mut map = HashMap::new();
+    for (idx, metadata) in rows.flatten() {
+        if let Some(timestamp) = proto_message_field(&metadata, 1).and_then(proto_timestamp_ms)
+            && timestamp > 0
+        {
+            map.insert(idx, timestamp);
+        }
+    }
+    map
+}
+
+fn antigravity_last_step_index(chat_model: &[u8]) -> Option<i64> {
+    let mut reader = ProtoReader::new(chat_model);
+    while let Some((field, value)) = reader.next() {
+        if field == 20
+            && let ProtoValue::Bytes(entry) = value
+            && proto_string_field(entry, 1) == Some("last_step_index")
+            && let Some(step_str) = proto_string_field(entry, 2)
+        {
+            return step_str.parse::<i64>().ok();
+        }
+    }
+    None
 }
 
 fn antigravity_session_models(blobs: &[Vec<u8>]) -> HashMap<String, String> {
@@ -1739,6 +1787,90 @@ mod tests {
         assert_eq!(models[0].today.call_count, 1);
     }
 
+    #[test]
+    fn reads_antigravity_cli_usage_with_step_timestamps_across_days() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("session-multi-day.db");
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE gen_metadata(idx INTEGER, data BLOB, size INTEGER);
+                 CREATE TABLE steps(idx INTEGER PRIMARY KEY, metadata BLOB);
+                 CREATE TABLE trajectory_metadata_blob(id TEXT, data BLOB);",
+            )
+            .unwrap();
+
+        // Conversation creation timestamp on day 1 (2026-07-28 12:00:00 UTC = 1785240000)
+        let session_meta = proto_bytes(2, &proto_message(&[proto_varint(1, 1_785_240_000)]));
+        connection
+            .execute(
+                "INSERT INTO trajectory_metadata_blob(id, data) VALUES ('main', ?1)",
+                rusqlite::params![session_meta],
+            )
+            .unwrap();
+
+        // Step 1 on day 1 (2026-07-28 12:05:00 UTC = 1785240300)
+        let step1_meta = proto_bytes(1, &proto_message(&[proto_varint(1, 1_785_240_300)]));
+        // Step 2 on day 2 (2026-07-29 10:00:00 UTC = 1785319200)
+        let step2_meta = proto_bytes(1, &proto_message(&[proto_varint(1, 1_785_319_200)]));
+        connection
+            .execute(
+                "INSERT INTO steps(idx, metadata) VALUES (1, ?1), (2, ?2)",
+                rusqlite::params![step1_meta, step2_meta],
+            )
+            .unwrap();
+
+        let usage1 = proto_message(&[
+            proto_varint(1, 100),
+            proto_varint(9, 50),
+            proto_bytes(11, b"resp-day1"),
+        ]);
+        let entry1 = proto_message(&[proto_bytes(1, b"last_step_index"), proto_bytes(2, b"1")]);
+        let chat1 = proto_message(&[
+            proto_bytes(4, &usage1),
+            proto_bytes(19, b"gemini-3.7-flash"),
+            proto_bytes(20, &entry1),
+        ]);
+
+        let usage2 = proto_message(&[
+            proto_varint(1, 200),
+            proto_varint(9, 80),
+            proto_bytes(11, b"resp-day2"),
+        ]);
+        let entry2 = proto_message(&[proto_bytes(1, b"last_step_index"), proto_bytes(2, b"2")]);
+        let chat2 = proto_message(&[
+            proto_bytes(4, &usage2),
+            proto_bytes(19, b"gemini-3.7-flash"),
+            proto_bytes(20, &entry2),
+        ]);
+
+        let meta1 = proto_bytes(1, &chat1);
+        let meta2 = proto_bytes(1, &chat2);
+        connection
+            .execute(
+                "INSERT INTO gen_metadata(idx, data, size) VALUES (0, ?1, ?2), (1, ?3, ?4)",
+                rusqlite::params![meta1, meta1.len(), meta2, meta2.len()],
+            )
+            .unwrap();
+        drop(connection);
+
+        let models = super::read_antigravity_model_activity_from_dir(
+            temp.path(),
+            "2026-07-29",
+            "2026-07-28",
+        )
+        .unwrap();
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].model_id, "gemini-3.7-flash");
+        assert_eq!(models[0].history.len(), 2);
+        assert_eq!(models[0].history[0].day, "2026-07-28");
+        assert_eq!(models[0].history[0].usage.total_tokens, 150);
+        assert_eq!(models[0].history[1].day, "2026-07-29");
+        assert_eq!(models[0].history[1].usage.total_tokens, 280);
+        assert_eq!(models[0].today.total_tokens, 280);
+    }
+
     fn proto_message(fields: &[Vec<u8>]) -> Vec<u8> {
         fields.iter().flatten().copied().collect()
     }
@@ -1808,6 +1940,21 @@ mod tests {
         assert_eq!(quota.pools[3].name, "CLAUDE AND GPT MODELS · Five Hour Limit Remaining");
         assert_eq!(quota.pools[3].remaining_percent, Some(100.0));
         assert_eq!(quota.pools[3].refresh_after_seconds, None);
+    }
+
+    #[test]
+    fn parses_antigravity_quota_with_disabled_five_hour_limit() {
+        let output = "\u{1b}[1;34mModels & Quota\u{1b}[0m\nCLAUDE AND GPT MODELS\nModels within this group: Claude Opus, Claude Sonnet, GPT-OSS\nWeekly Limit Remaining\n0.00%\nRefreshes in 2h 30m\nFive Hour Limit Remaining\nDisabled: You have hit your weekly limit, the 5-hour limit does not currently apply. Your weekly limit will fully refresh in 2 hours, 30 minutes.\nesc Close";
+        let quota = parse_antigravity_quota(output);
+
+        assert_eq!(quota.status, ProviderQuotaStatus::Available);
+        assert_eq!(quota.pools.len(), 2);
+        assert_eq!(quota.pools[0].name, "CLAUDE AND GPT MODELS · Weekly Limit Remaining");
+        assert_eq!(quota.pools[0].remaining_percent, Some(0.0));
+        assert_eq!(quota.pools[0].refresh_after_seconds, Some(9_000));
+        assert_eq!(quota.pools[1].name, "CLAUDE AND GPT MODELS · Five Hour Limit Remaining");
+        assert_eq!(quota.pools[1].remaining_percent, None);
+        assert_eq!(quota.pools[1].refresh_after_seconds, None);
     }
 
     #[test]

@@ -1,5 +1,41 @@
 # Design QA
 
+## Codex general usage limit filtering, white screen elimination, and v7 database migration — 2026-08-25
+
+- Scope:
+  - Filter out model-specific limit buckets (such as `codex_bengalfox` / GPT-5.3-Codex-Spark) and only use the general usage limit (`limit_id = "codex"`).
+  - Upgrade SQLite database to schema v7 to delete legacy non-codex quota snapshots and ensure `latest_any_snapshot` reliably returns the Codex general limit.
+  - Eliminate popover white screen/flashing by removing raw `window.eval`/`window.navigate` on tray toggle, switching to native Tauri IPC event emission (`tray-shown`), guaranteeing root/html/body transparency, defaulting `.tray-popover` to dark HUD palette, and providing graceful dark tray skeleton fallbacks.
+- Root causes:
+  - Multi-limit Codex rate limit responses contain supplementary buckets like `codex_bengalfox` with separate weekly/5-hour limits, which previously caused dashboard quota value discrepancy and jitter when displaying the most-used snapshot.
+  - Previous recovery attempts ran JS `eval` on show and fell back to `window.location.replace` or `window.navigate` whenever eval errored or before DOM mount, which wiped the DOM and caused visible white frames in `WKWebView`. Additionally, `:root` had an opaque `#f2f2f7` background in light mode.
+- Correction:
+  - `normalize_rate_limits` in `codex/protocol.rs` now explicitly filters for `limit_id = "codex"`.
+  - Storage schema v7 runs `DELETE FROM quota_snapshots WHERE limit_id != 'codex'` and bumps `user_version` to 7.
+  - `latest_any_snapshot` prioritizes the `codex` limit snapshot.
+  - In `lib.rs`, `show_tray` and `show_main` use non-blocking `window.emit` without eval/navigate.
+  - In `styles.css` and `index.html`, `:root`, `html`, `body` have transparent background, and `.tray-popover` defaults to dark HUD palette.
+  - In `App.tsx`, tray surface never renders an opaque white loading screen.
+- Validation: `just check`, `just test`, `just build-gui`, and all unit tests pass cleanly. Suite covers 70 core tests, 12 Tauri tests, and 64 frontend tests (82 Rust tests + 64 frontend tests = 146 total).
+- Installed runtime: installed at `/Applications/AI Quota Trends.app`, ad-hoc signed, strictly verified, executable SHA-256 `430130dd93bc7e0cdb8adb6121af47b11ad9bd585046ea89e87acd718e873b51`, running as PID `64459` with Codex app-server child PID `64486`. The prior installation is backed up at `/private/tmp/AI Quota Trends.app.backup-20260825-135933`.
+- Native visual boundary: CoreGraphics reports tray window `CGWindowID 10105` (Layer 5, 338×571 points) and main window `CGWindowID 10104` (Layer 0, 520×580 points) for PID `64459`. Native screenshot capture of the hidden popover layer remains `Not verified`.
+
+final result: source, tests, build, installation, process, and signature verified; opened native tray visual Not verified
+
+## WebKit recovery, multi-day step timestamps, and Antigravity limit fixes — 2026-08-24
+
+- Scope: recover gracefully from WebKit content process termination, reliably refresh tray popovers upon showing, correctly attribute Antigravity conversation tokens across multi-day step timestamps, parse disabled limits / refresh text variations, and prevent white screen after sleep.
+- Root causes:
+  - `on_web_content_process_terminate` used `webview.reload()`, which failed or hung when the process died; replacing with target re-navigation cleanly reinitializes the webview.
+  - Tray popovers lacked a mount health check and wake/shown event dispatch, leading to stale or blank states after long sleep intervals.
+  - Antigravity session token readings previously relied solely on the session creation timestamp rather than querying individual step timestamps from `steps.metadata` matched via `last_step_index`.
+  - Antigravity quota parser did not ignore `Disabled:` limit explanations or match `refresh in` variants.
+- Validation: `just fmt`, `just check`, `just test`, `just build-gui`, and `git diff --check` all pass cleanly. Suite covers 69 core tests, 12 Tauri tests, and 64 frontend tests.
+- Installed runtime: installed at `/Applications/AI Quota Trends.app`, ad-hoc signed, strictly verified, and running as PID `4266` with Codex app-server child PID `4272`. The prior installation is backed up at `/private/tmp/AI Quota Trends.app.backup-20260824-175616`.
+- Native visual boundary: CoreGraphics reports tray window `CGWindowID 6467` (Layer 5, 338×571 points) and main window `CGWindowID 6466` (Layer 0, 520×580 points) for PID `4266`. Native screenshot capture of the hidden popover layer remains `Not verified`.
+
+final result: source, tests, build, installation, process, and signature verified; opened native tray visual Not verified
+
 ## Tray completeness and reliable opening — 2026-08-19
 
 - Scope: keep tray clicks immediately responsive, preserve the initial local-quota request across
