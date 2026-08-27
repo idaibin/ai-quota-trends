@@ -6,12 +6,11 @@ This repository is a local-first macOS Tauri application. Keep product behavior
 in Rust, persistence in SQLite, and frontend code limited to presentation and
 interaction.
 
-## Required Start
+## Authority
 
-1. Run `git status --short --branch`.
-2. Read `docs/architecture.md` and the task-relevant spec.
-3. Use root `just` targets for validation.
-4. Preserve unrelated work and keep changes on a non-`main` branch.
+- Read `docs/architecture.md` and the task-relevant spec before changing an
+  owner boundary.
+- The root `justfile` owns validation commands.
 
 ## Boundaries
 

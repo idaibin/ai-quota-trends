@@ -24,6 +24,14 @@ describe("tray provider quota refresh contract", () => {
     expect(source).toContain("providerQuotaRequestRef.current ?? listProviderQuotas()");
   });
 
+  it("coalesces dashboard event bursts and pauses fallback refresh while hidden", () => {
+    expect(source).toContain("dashboardLoadRef.current(async () =>");
+    expect(source).toContain('document.visibilityState === "visible"');
+    expect(source).toContain("DASHBOARD_REFRESH_INTERVAL_MS");
+    expect(source).not.toContain("window.setInterval(() => void load(), 5_000)");
+    expect(source).not.toContain('win.listen("tray-resumed"');
+  });
+
   it("uses the same tray-surface decision for rendering and quota collection", () => {
     expect(source).toContain('const isTraySurface = startsAsTray || windowLabel === "tray"');
     expect(source).toContain("if (!isTraySurface || !settingsReady) return");

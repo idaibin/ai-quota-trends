@@ -19,9 +19,11 @@ import { OverviewRoute } from "./routes/overview-route";
 import { SettingsRoute } from "./routes/settings-route";
 import type { AppSettings, DashboardData, ProviderProbe, ProviderQuota, ThemeMode } from "./types";
 import { CACHE_KEYS, loadCachedJson, saveCachedJson } from "./utils/cache";
+import { createSingleFlight } from "./utils/single-flight";
 
 type MainRoute = "overview" | "settings";
 export const PROVIDER_QUOTA_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
+export const DASHBOARD_REFRESH_INTERVAL_MS = 30_000;
 
 export function AppContent() {
   const startsAsTray = new URLSearchParams(window.location.search).get("surface") === "tray";
@@ -61,21 +63,26 @@ export function AppContent() {
     Boolean(loadCachedJson<ProviderQuota[]>(CACHE_KEYS.PROVIDER_QUOTAS)?.length),
   );
   const providerQuotaRequestRef = useRef<Promise<ProviderQuota[]> | null>(null);
+  const dashboardLoadRef = useRef(createSingleFlight());
   const settingsReady = settings !== null;
   const isTraySurface = startsAsTray || windowLabel === "tray";
 
-  const load = useCallback(async () => {
-    try {
-      const [dashboardData, settingsData] = await Promise.all([getDashboard(), getSettings()]);
-      setDashboard(dashboardData);
-      setSettings(settingsData);
-      saveCachedJson(CACHE_KEYS.DASHBOARD, dashboardData);
-      saveCachedJson(CACHE_KEYS.SETTINGS, settingsData);
-      setError(null);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    }
-  }, []);
+  const load = useCallback(
+    () =>
+      dashboardLoadRef.current(async () => {
+        try {
+          const [dashboardData, settingsData] = await Promise.all([getDashboard(), getSettings()]);
+          setDashboard(dashboardData);
+          setSettings(settingsData);
+          saveCachedJson(CACHE_KEYS.DASHBOARD, dashboardData);
+          saveCachedJson(CACHE_KEYS.SETTINGS, settingsData);
+          setError(null);
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      }),
+    [],
+  );
 
   useEffect(() => {
     void load();
@@ -89,24 +96,21 @@ export function AppContent() {
     document.addEventListener("visibilitychange", handleVisibility);
 
     let unlistenTrayShown: (() => void) | undefined;
-    let unlistenTrayResumed: (() => void) | undefined;
     if (window.__TAURI_INTERNALS__) {
       const win = getCurrentWindow();
       void win.listen("tray-shown", handleFocus).then((unlisten) => {
         unlistenTrayShown = unlisten;
       });
-      void win.listen("tray-resumed", handleFocus).then((unlisten) => {
-        unlistenTrayResumed = unlisten;
-      });
     }
 
-    const timer = window.setInterval(() => void load(), 5_000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, DASHBOARD_REFRESH_INTERVAL_MS);
     return () => {
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("aqt-tray-shown", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
       if (unlistenTrayShown) unlistenTrayShown();
-      if (unlistenTrayResumed) unlistenTrayResumed();
       window.clearInterval(timer);
     };
   }, [load]);
@@ -158,14 +162,10 @@ export function AppContent() {
     document.addEventListener("visibilitychange", handleVisibility);
 
     let unlistenTrayShown: (() => void) | undefined;
-    let unlistenTrayResumed: (() => void) | undefined;
     if (window.__TAURI_INTERNALS__) {
       const win = getCurrentWindow();
       void win.listen("tray-shown", handleTrayFocus).then((unlisten) => {
         unlistenTrayShown = unlisten;
-      });
-      void win.listen("tray-resumed", handleTrayFocus).then((unlisten) => {
-        unlistenTrayResumed = unlisten;
       });
     }
 
@@ -178,7 +178,6 @@ export function AppContent() {
       window.removeEventListener("aqt-tray-shown", handleTrayFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
       if (unlistenTrayShown) unlistenTrayShown();
-      if (unlistenTrayResumed) unlistenTrayResumed();
       window.clearInterval(timer);
     };
   }, [isTraySurface, settingsReady]);

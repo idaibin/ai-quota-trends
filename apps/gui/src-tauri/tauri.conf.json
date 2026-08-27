@@ -34,16 +34,13 @@
         "visible": false,
         "decorations": false,
         "transparent": true,
+        "backgroundColor": [0, 0, 0, 0],
+        "backgroundThrottling": "disabled",
         "resizable": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "shadow": false,
-        "devtools": true,
-        "windowEffects": {
-          "effects": ["hudWindow"],
-          "state": "active",
-          "radius": 11
-        }
+        "devtools": true
       }
     ],
     "security": {

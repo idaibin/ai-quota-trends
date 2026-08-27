@@ -43,6 +43,25 @@ The app must not access `~/.codex/auth.json` or a `chatgpt.com/backend-api` URL.
 Passing automated gates does not satisfy this acceptance. The installed macOS app
 and its real WKWebView processes must be exercised.
 
+## Tray open latency and blank-frame regression
+
+1. Verify the packaged tray window is transparent without exposing opaque corner
+   artifacts around the 18px rounded frosted glass popover. Confirm background
+   throttling is disabled only for the tray WebView so the hidden document stays
+   mounted without keeping an off-screen visible window.
+2. From a running installed app, open and blur-close the tray 20 times. Record the
+   tray click time and first non-blank content time for each cycle; no cycle may
+   expose a white or transparent full-window frame.
+3. Repeat once immediately after cold launch and once after a WebKit content-process
+   reload. Cached or loading content may appear before fresh values, but the native
+   window must remain responsive.
+4. Confirm dashboard refresh has at most one request in flight, hidden tray windows
+   do not run the fallback refresh, and show/focus event bursts coalesce into the
+   same request.
+5. Keep native window rendering, fresh provider data, and command duration as
+   separate evidence. A slow provider scan must not be reported as a WebKit blank
+   frame, and a fast opaque shell must not be reported as fresh-data completion.
+
 ## Product identity migration
 
 1. Start from an existing

@@ -1381,19 +1381,21 @@ select {
   min-width: 0;
   height: 100%;
   overflow: hidden;
-  border: 1px solid #333333;
-  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
   color: #f5f5f5;
-  background: #101010;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.52);
+  background: rgba(26, 26, 30, 0.86);
+  backdrop-filter: blur(36px) saturate(190%) contrast(105%);
+  -webkit-backdrop-filter: blur(36px) saturate(190%) contrast(105%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
   font-family:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, "PingFang SC", monospace;
   user-select: none;
   -webkit-user-select: none;
-  --tray-panel: #181818;
+  --tray-panel: rgba(255, 255, 255, 0.06);
   --tray-text: #f5f5f5;
-  --tray-muted: #a3a3a3;
-  --tray-border: #3a3a3a;
+  --tray-muted: rgba(245, 245, 245, 0.65);
+  --tray-border: rgba(255, 255, 255, 0.12);
   --tray-accent: #58a9ff;
   --tray-codex: #58a9ff;
   --tray-qoder: #58a9ff;
@@ -1406,23 +1408,25 @@ select {
   --tray-meter-secondary: var(--tray-five-hour);
   --tray-meter-warning: var(--tray-status-warning);
   --tray-meter-danger: var(--tray-status-danger);
-  --tray-track: #343434;
-  --tray-chart-grid: #2d2d2d;
+  --tray-track: rgba(255, 255, 255, 0.15);
+  --tray-chart-grid: rgba(255, 255, 255, 0.1);
   --tray-chart-line: #f5f5f5;
-  --tray-axis: #a3a3a3;
+  --tray-axis: rgba(245, 245, 245, 0.65);
   --tray-current-halo: transparent;
-  --tray-reset-line: #777777;
-  --tray-tooltip: #181818;
+  --tray-reset-line: rgba(255, 255, 255, 0.35);
+  --tray-tooltip: rgba(30, 30, 35, 0.85);
 }
 :root[data-theme="light"] .tray-popover {
-  border-color: #d8d8d8;
+  border-color: rgba(0, 0, 0, 0.12);
   color: #111111;
-  background: #f7f7f7;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
-  --tray-panel: #ffffff;
+  background: rgba(250, 250, 252, 0.82);
+  backdrop-filter: blur(36px) saturate(190%) contrast(105%);
+  -webkit-backdrop-filter: blur(36px) saturate(190%) contrast(105%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+  --tray-panel: rgba(0, 0, 0, 0.04);
   --tray-text: #111111;
   --tray-muted: #666666;
-  --tray-border: #d8d8d8;
+  --tray-border: rgba(0, 0, 0, 0.08);
   --tray-accent: #0b67e8;
   --tray-codex: #0b67e8;
   --tray-qoder: #0b67e8;
@@ -1435,13 +1439,13 @@ select {
   --tray-meter-secondary: var(--tray-five-hour);
   --tray-meter-warning: var(--tray-status-warning);
   --tray-meter-danger: var(--tray-status-danger);
-  --tray-track: #dddddd;
-  --tray-chart-grid: #e3e3e3;
+  --tray-track: rgba(0, 0, 0, 0.1);
+  --tray-chart-grid: rgba(0, 0, 0, 0.08);
   --tray-chart-line: #111111;
   --tray-axis: #737373;
   --tray-current-halo: transparent;
   --tray-reset-line: #8a8a8a;
-  --tray-tooltip: #ffffff;
+  --tray-tooltip: rgba(255, 255, 255, 0.95);
 }
 .tray-popover,
 .tray-popover * {
@@ -1955,7 +1959,9 @@ select {
 }
 :root[data-surface="tray"] .loading-screen {
   color: #a3a3a3;
-  background: #101010;
+  background: rgba(26, 26, 30, 0.86);
+  backdrop-filter: blur(36px);
+  -webkit-backdrop-filter: blur(36px);
 }
 .loading-screen img {
   width: 54px;

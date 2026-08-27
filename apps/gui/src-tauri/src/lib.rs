@@ -7,7 +7,7 @@ use std::{
     path::Path,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -22,16 +22,10 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 
-static IS_TRAY_VISIBLE: AtomicBool = AtomicBool::new(false);
 static LAST_HIDE_TIME: AtomicU64 = AtomicU64::new(0);
-const OFFSCREEN_X: f64 = -10000.0;
-const OFFSCREEN_Y: f64 = -10000.0;
 
 fn current_timestamp_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
 }
 
 const TRAY_REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
@@ -116,35 +110,30 @@ fn tray_toggle_action(visible: bool) -> TrayToggleAction {
 }
 
 fn hide_tray(window: &tauri::WebviewWindow) {
-    let _ = window.set_position(PhysicalPosition::new(OFFSCREEN_X, OFFSCREEN_Y));
-    IS_TRAY_VISIBLE.store(false, Ordering::SeqCst);
+    if let Err(error) = window.hide() {
+        eprintln!("[AQT] failed to hide tray window: {error}");
+    }
     LAST_HIDE_TIME.store(current_timestamp_ms(), Ordering::SeqCst);
 }
 
 fn show_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
     let Some(window) = app.get_webview_window("tray") else { return };
-    if let Ok(false) = window.is_visible() {
-        let _ = window.show();
-    }
     let scale = window.scale_factor().unwrap_or(1.0);
     let width = window.outer_size().map(|size| size.width as f64).unwrap_or(338.0 * scale);
     let target_x = (anchor_x - width / 2.0).max(8.0);
     let target_y = anchor_y;
     let _ = window.set_position(PhysicalPosition::new(target_x, target_y));
-    let _ = window.unminimize();
-    let _ = window.set_focus();
-    IS_TRAY_VISIBLE.store(true, Ordering::SeqCst);
+    if let Err(error) = window.show() {
+        eprintln!("[AQT] failed to show tray window: {error}");
+        return;
+    }
+    if let Err(error) = window.unminimize() {
+        eprintln!("[AQT] failed to unminimize tray window: {error}");
+    }
+    if let Err(error) = window.set_focus() {
+        eprintln!("[AQT] failed to focus tray window: {error}");
+    }
     let _ = window.emit("tray-shown", ());
-    let _ = window.emit("tray-resumed", ());
-
-    let win_clone = window.clone();
-    tauri::async_runtime::spawn(async move {
-        let probe_result = win_clone.eval("window.__TRAY_ALIVE = true;");
-        if probe_result.is_err() {
-            eprintln!("[AQT Recovery] WebKit WebContent process unresponsive on tray show; reloading webview");
-            let _ = win_clone.eval("window.location.reload();");
-        }
-    });
 }
 
 #[tauri::command]
@@ -163,7 +152,7 @@ fn should_ignore_tray_click_after_blur(
 
 fn toggle_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
     let Some(window) = app.get_webview_window("tray") else { return };
-    let is_visible = IS_TRAY_VISIBLE.load(Ordering::SeqCst);
+    let is_visible = window.is_visible().unwrap_or(false);
     let now = current_timestamp_ms();
     let last_hide = LAST_HIDE_TIME.load(Ordering::SeqCst);
 
@@ -192,7 +181,9 @@ pub fn run() {
             "[AQT] WebKit content process for webview `{}` terminated; reloading",
             webview.label()
         );
-        let _ = webview.reload();
+        if let Err(error) = webview.reload() {
+            eprintln!("[AQT] failed to reload terminated webview `{}`: {error}", webview.label());
+        }
     });
 
     let app = builder
@@ -274,10 +265,6 @@ pub fn run() {
                     }
                 }
             });
-            if let Some(tray_window) = app.get_webview_window("tray") {
-                hide_tray(&tray_window);
-                let _ = tray_window.show();
-            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

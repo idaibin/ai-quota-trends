@@ -12,12 +12,14 @@ and used only for Settings. The generated transparent PNG app mark under
 - Menu bar item: a monochrome template version of the existing quota curve with
   no purple tile, followed by the rounded current Codex remaining percentage. The
   popover selection never changes the menu bar source.
-- Menu bar popover: 338px wide, frameless, opaque, flush with the menu bar, and
+- Menu bar popover: 338px wide, frameless, translucent, flush with the menu bar, and
   hidden on blur. It follows a restrained Codex-style monochrome system: near-white in light
-  appearance and near-black in dark appearance. The desktop does not show through the reading
-  surface, and blur, glass, ambient color fields, decorative glare, and colored chrome are absent.
-  A neutral 1px rim and restrained native HUD shadow separate the utility from its surroundings.
-- The popover uses one continuous opaque HUD inside 12px content insets, followed by one
+  appearance and near-black in dark appearance. The desktop softly shows through one frosted
+  reading surface without ambient color fields, decorative glare, or colored chrome. The
+  antialiased 18px perimeter has a subtle light material edge only: neither the native window nor
+  CSS may draw a dark outer stroke, drop shadow, or halo, and pixels outside the rounded surface
+  remain fully transparent.
+- The popover uses one continuous frosted HUD inside 12px content insets, followed by one
   borderless Token section. A 1px divider appears only when the quota row stack is
   non-empty and relies on the surrounding 8px stack gap without extra vertical margins;
   the resulting provider-to-Token spacing remains 17px. Codex renders only when its first snapshot window has a finite used
@@ -63,7 +65,7 @@ and used only for Settings. The generated transparent PNG app mark under
   intensity use the unified provider/model completed-request total Tokens; the tooltip does not repeat that daily total. Account totals remain data-only and are not
   exposed as an additional UI metric.
 - Visible popover copy, labels, tooltips, and accessibility names use Chinese. Every visible Tray glyph uses one system monospace stack (`ui-monospace`, SF Mono, Menlo, compatible CJK fallback, `monospace`); weight and size provide hierarchy while numeric columns retain tabular alignment.
-- The native window and its content clip to a 12px continuous corner radius.
+- The native window and its content clip to an 18px continuous corner radius.
 
 ## Tokens
 
@@ -81,10 +83,10 @@ and used only for Settings. The generated transparent PNG app mark under
 Settings typography uses the macOS system stack. Tray typography uses the system monospace stack
 throughout, and numeric metrics use tabular figures.
 Icons use Phosphor's regular outline weight; the app mark is a transparent PNG.
-Window, panel, and control radii are respectively 12px, 10–12px, and 9px across both
-the tray and Settings surfaces.
+Window, panel, and control radii are respectively 18px for the tray, 12px for Settings,
+10–12px for panels, and 9px for controls.
 
-The tray and Settings share system-aware light and dark appearances. The Tray follows the saved `light`, `dark`, or live macOS `system` appearance without restart. Its opaque black-and-white container keeps quota and warning semantics independent from the shell. System blue remains
+The tray and Settings share system-aware light and dark appearances. The Tray follows the saved `light`, `dark`, or live macOS `system` appearance without restart. Its translucent black-and-white container keeps quota and warning semantics independent from the shell. System blue remains
 available to Settings and active controls; the tray shell remains monochrome while quota fills,
 matching labels/percentages, Token total, heatmap cells, and Tooltip values retain the data palettes described above. The
 layout follows a compact native-menu rhythm: 8px between tray groups, 12px internal
@@ -93,7 +95,7 @@ content insets, 6px dense text spacing, and 16px between Settings groups.
 ## Components
 
 - `TrayPopover`: the primary product surface and owner of the finite-source
-  provider rows, quota visibility, dynamic window height, and reset timing. It uses one continuous system-aware opaque HUD
+  provider rows, quota visibility, dynamic window height, and reset timing. It uses one continuous system-aware frosted HUD
   and has no empty/unavailable placeholders, quota trend, branded toolbar,
   decorative traffic-light strip, or popover pointer.
 - `TokenActivityCard`: a `react-activity-calendar` heatmap backed by Rust/SQLite daily
@@ -166,8 +168,25 @@ Reduced-motion users receive no animated chart/ring entrance.
   use a named component class backed by tokens.
 - Tauri commands return typed DTOs; the React layer never imports storage logic.
 - Window labels are `main` and `tray`. `main` starts hidden; `tray` is frameless,
-  transparent over a native macOS HUD material, shadowless, always on top,
-  hidden on blur, and toggled from the tray icon.
+  transparent, shadowless, always on top, hidden on blur, and toggled from the tray
+  icon. The tray window is transparent to ensure `.tray-popover` rounded corners and
+  glass translucency are properly rendered without exposing black or opaque corner
+  artifacts. The `.tray-popover` component provides its own theme-aware frosted glass
+  background (`rgba(26, 26, 30, 0.86)` with blur in dark mode, `rgba(250, 250, 252, 0.82)`
+  with blur in light mode) and 18px border radius. It must not use an outer CSS
+  `box-shadow`; a restrained inset highlight is allowed because it cannot spill into
+  the transparent corner channel.
+- On macOS, the tray enables Tauri's `macos-private-api` transparency path and sets
+  the tray window/WebView background to transparent RGBA. This local menu-bar app is
+  not distributed through the Mac App Store. Native HUD `windowEffects` remain absent;
+  the CSS surface owns the tint and blur.
+- The tray WebView is created once at application startup and reused. Showing the
+  tray never waits for dashboard or provider collection; cached or loading content
+  paints first, and fresh data replaces it asynchronously. Native background
+  throttling is disabled for this one hidden tray WebView so WebKit does not suspend
+  or unload it after several minutes; frontend data polling still pauses while the
+  document is hidden. Dashboard refreshes are single-flight and run only on initial
+  load, visible focus/show, or a bounded 30-second visible fallback.
 - On macOS the app uses accessory activation policy so it behaves as a menu bar
   utility rather than a permanent Dock app.
 

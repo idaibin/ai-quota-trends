@@ -1,5 +1,129 @@
 # Design QA
 
+## Dark tray opacity adjustment to 86% — 2026-08-27
+
+- User-selected delta: raise only the dark tray material background from Alpha `0.76` to `0.86`;
+  keep the light theme at `0.82`, blur/saturation, 18px radius, border, inset highlight, layout,
+  and data presentation unchanged.
+- Contract and source: `docs/design/ui-spec.md` and both the populated/loading dark tray surfaces
+  in `apps/gui/src/styles.css` now use `rgba(26, 26, 30, 0.86)`.
+- Validation: `git diff --check` passed and `just build-gui` produced the debug application.
+  No behavior test was added or run for this style-only change.
+- Installed runtime: ad-hoc signed and strictly verified at `/Applications/AI Quota Trends.app`;
+  built and installed executable SHA-256 match at
+  `b4bed53204ed140c5402fdd1bce584ec61e55f224b5f868dc5ad3ecc828819f8`.
+  Final PID `93381` owns Codex app-server child PID `93388`; tray `CGWindowID 25383` is
+  338×549 points.
+- Native evidence:
+  `.codex/artifacts/native-qa-20260827-opacity-86/tray-opacity-86.png`, SHA-256
+  `d2e186fb5c0a768ab0ad52b3ce56380f0aaf2b73f83004f176c5399f2d9c39b0`.
+  Interior pixel Alpha resolves to `0.858824` at Retina capture precision, while corner `(0,0)`
+  remains `rgba(0,0,0,0)`.
+- Rollback: the immediately prior `0.76` installation is retained at
+  `/private/tmp/ai-quota-trends-opacity-76.lvUsrz/AI Quota Trends.app`.
+
+final result: dark tray opacity 86%, build, install, signature, process, app-server child, and
+real native tray visual verified
+
+## Tray transparent-corner and black-halo correction — 2026-08-27
+
+- Reported failure:
+  - The installed tray still showed a dark perimeter/corner channel after the CSS-only glass
+    change. The supplied real-runtime capture was 338×549 points / 676×1098 pixels.
+- Root cause:
+  - The tray retained `transparent: true`, but the earlier lifecycle correction removed both
+    Tauri's `macos-private-api` Cargo feature and `app.macOSPrivateApi`. In Tauri/Wry 2.11 this
+    prevents the macOS transparent-window and WKWebView `drawsBackground` path from compiling in,
+    so the configuration was ignored and the WebView backing canvas stayed opaque.
+  - `.tray-popover` also declared an outer CSS drop shadow even though the native tray window was
+    configured as shadowless. That shadow could spill into the rounded-corner channel.
+- Correction:
+  - `docs/design/ui-spec.md` now owns one consistent 18px frosted-tray contract: transparent
+    corners, no native or CSS outer shadow/dark halo, and a permitted restrained inset highlight.
+  - `apps/gui/src-tauri/Cargo.toml` restores only Tauri's `macos-private-api` feature; native HUD
+    `windowEffects` remain absent.
+  - `apps/gui/src-tauri/tauri.conf.json` restores `app.macOSPrivateApi: true` and explicitly sets
+    the tray window/WebView `backgroundColor` to transparent RGBA `[0, 0, 0, 0]`.
+  - `apps/gui/src/styles.css` removes the outer dark `box-shadow` while retaining the inset material
+    highlight.
+- Validation and installed runtime:
+  - `git diff --check`, `just check`, `just test`, and `just build-gui` passed. The final basis
+    covers 71 core Rust tests, 13 Tauri tests, and 73 frontend tests.
+  - The final bundle was ad-hoc signed and passes `codesign --verify --deep --strict` after
+    installation at `/Applications/AI Quota Trends.app`.
+  - Built and installed executable SHA-256 match:
+    `9d6b8f03d6935de1370848ca12e30239dd4c54340c0361c13a3ef164fd114020`.
+  - Final process PID `90267` owns Codex app-server child PID `90276`; tray window
+    `CGWindowID 25314` is 338×549 points.
+  - The pre-fix installed application remains recoverable at
+    `/private/tmp/ai-quota-trends-no-halo.XcRrL2/AI Quota Trends.app`; the superseded CSS-only
+    intermediate build remains at
+    `/private/tmp/ai-quota-trends-transparent.1ilCLv/AI Quota Trends.app`.
+- Native visual evidence:
+  - Superseded pass 1:
+    `.codex/artifacts/native-qa-20260827-no-black-edge/tray-no-black-edge-pass1.png`, PID `88452`,
+    `CGWindowID 25285`. Although the PNG exposed an Alpha channel, corner pixel `(0,0)` was
+    `rgba(30,30,30,1)`, proving the backing surface was still opaque.
+  - Final pass 2:
+    `.codex/artifacts/native-qa-20260827-no-black-edge/tray-transparent-pass2.png`, PID `90267`,
+    `CGWindowID 25314`, SHA-256
+    `b3713534d101cd61f92bfe2f1497a26e5880d3dc1956ffbb937546ca169ced81`.
+    Corner pixels `(0,0)` and `(0,20)` are `rgba(0,0,0,0)`; the straight material edge remains a
+    translucent light rim at Alpha `0.8`. No opaque black corner channel or CSS outer shadow is
+    present.
+
+final result: transparent rounded corners, no dark outer shadow, build, install, signature,
+process, app-server child, and real native tray visual verified
+
+## Opaque tray lifecycle and single-flight refresh correction — 2026-08-26
+
+- Scope:
+  - Remove the macOS private transparent-window/HUD composition path from the tray.
+  - Restore standard hidden-window reuse and disable native background throttling only for the
+    tray WebView, keeping it mounted without an always-visible off-screen window.
+  - Move dashboard reconstruction and provider CLI probes off the Tauri UI thread.
+  - Coalesce dashboard refresh bursts, pause fallback polling while hidden, and reduce the
+    visible fallback from five seconds to thirty seconds.
+- Evidence basis:
+  - Current source was compared with Tauri/Wry macOS reports covering initial white frames,
+    transparent WebView redraw artifacts, packaged-app white output, and transparent-window GPU
+    compositing. No official evidence was found for the previous claim that `window.hide()` itself
+    necessarily releases the WKWebView backing store.
+  - The previous `eval("window.__TRAY_ALIVE = true")` probe only submitted JavaScript and did not
+    verify React mount or first paint; it and the duplicate `tray-resumed` refresh were removed.
+- Correction:
+  - `apps/gui/src-tauri/tauri.conf.json` now uses `transparent: false`, native/WebView
+    `backgroundColor: #101010`, and tray-only `backgroundThrottling: disabled`; HUD effects and
+    `macOSPrivateApi` were removed.
+  - `apps/gui/src-tauri/src/lib.rs` now uses standard `hide()`/`show()`, reports native lifecycle
+    failures, and logs a failed WebContent reload instead of swallowing it.
+  - `apps/gui/src-tauri/src/commands.rs` runs dashboard reconstruction and provider probing through
+    bounded `spawn_blocking` tasks.
+  - `apps/gui/src/App.tsx` uses a reusable single-flight guard, a visible-only 30-second dashboard
+    fallback, and one native `tray-shown` event.
+- Validation:
+  - Focused frontend tests: 8 passed; focused Tauri tests: 13 passed.
+  - `just check`: Rust check/Clippy, frontend lint/typecheck, and 73 frontend tests passed.
+  - `just test`: 71 core tests, 13 Tauri tests, and 73 frontend tests passed.
+  - `just build-gui`: packaged debug application built successfully after the final throttling
+    configuration.
+- Installed runtime:
+  - Installed at `/Applications/AI Quota Trends.app`, ad-hoc signed and strictly verified.
+  - Running as PID `74385` with Codex app-server child PID `74391`.
+  - Executable SHA-256:
+    `62e132307d5fb5ce2a5d35d323d6bf0eef6f4dbc0e6d3bba651b39d2abd3f89e`.
+  - Previous intermediate installation is recoverable at
+    `/private/tmp/ai-quota-trends-final.dO2mJ2/AI Quota Trends.app`; the original pre-change
+    installation remains at `/private/tmp/ai-quota-trends-opaque.HA4ubL/AI Quota Trends.app`.
+- Native visual boundary:
+  - CoreGraphics resolved the installed tray window before the final rebuild, but Computer Use
+    could not activate/capture the menu-bar-only client (ScreenCaptureKit failure followed by
+    repeated timeout). The 20-cycle opened-popover visual/latency acceptance and sleep/wake sweep
+    remain `Not verified`; no browser preview was substituted.
+
+final result: source, automated gates, build, installation, process, and signature verified;
+opened native tray visual and repeated latency acceptance Not verified
+
 ## Off-screen displacement hiding strategy and heartbeat self-healing probe — 2026-08-25
 
 - Scope:

@@ -1,9 +1,15 @@
-use std::{collections::BTreeMap, fs, process::Command};
+use std::{
+    collections::BTreeMap,
+    fs,
+    process::Command,
+    sync::{Arc, Mutex},
+};
 
 use ai_quota_core::{
     ActivityEvent, AlertRecord, AppSettings, CollectorState, Database, DatabaseCleanupResult,
-    DatabaseStats, Pace, ProviderId, ProviderProbe, ProviderQuota, QuotaSnapshot, TokenActivity,
-    TrendPoint, UsageSpeeds, calculate_consumed, calculate_pace, calculate_speeds,
+    DatabaseStats, Pace, ProviderId, ProviderProbe, ProviderQuota, QuotaSnapshot,
+    SharedCollectorState, TokenActivity, TrendPoint, UsageSpeeds, calculate_consumed,
+    calculate_pace, calculate_speeds,
 };
 use chrono::{Duration, Local, Utc};
 use serde::Serialize;
@@ -76,9 +82,12 @@ fn provider_probe_inputs(database: &Database) -> Result<(String, Vec<ProviderId>
     Ok((settings.codex_path.trim().to_owned(), settings.enabled_provider_ids))
 }
 
-fn dashboard(state: &AppState) -> Result<DashboardData, String> {
+fn dashboard(
+    database: &Arc<Mutex<Database>>,
+    collector_state: &SharedCollectorState,
+) -> Result<DashboardData, String> {
     let now = Utc::now().timestamp();
-    let database = state.database.lock().map_err(|_| "database lock poisoned".to_owned())?;
+    let database = database.lock().map_err(|_| "database lock poisoned".to_owned())?;
     let snapshot = database
         .latest_any_snapshot()
         .map_err(|error| error.to_string())?
@@ -130,11 +139,8 @@ fn dashboard(state: &AppState) -> Result<DashboardData, String> {
         usage_progress: 0.0,
         status: ai_quota_core::PaceStatus::Normal,
     });
-    let collector = state
-        .collector_state
-        .read()
-        .map_err(|_| "collector state lock poisoned".to_owned())?
-        .clone();
+    let collector =
+        collector_state.read().map_err(|_| "collector state lock poisoned".to_owned())?.clone();
     let today = Local::now().date_naive();
     let enabled_provider_ids =
         database.load_settings().map_err(|error| error.to_string())?.enabled_provider_ids;
@@ -284,15 +290,23 @@ mod tests {
     }
 }
 
-#[tauri::command]
-pub fn get_dashboard(state: State<'_, AppState>) -> Result<DashboardData, String> {
-    dashboard(&state)
+async fn dashboard_from_state(state: &AppState) -> Result<DashboardData, String> {
+    let database = Arc::clone(&state.database);
+    let collector_state = Arc::clone(&state.collector_state);
+    tauri::async_runtime::spawn_blocking(move || dashboard(&database, &collector_state))
+        .await
+        .map_err(|error| format!("dashboard task failed: {error}"))?
 }
 
 #[tauri::command]
-pub fn refresh_quota(state: State<'_, AppState>) -> Result<DashboardData, String> {
+pub async fn get_dashboard(state: State<'_, AppState>) -> Result<DashboardData, String> {
+    dashboard_from_state(&state).await
+}
+
+#[tauri::command]
+pub async fn refresh_quota(state: State<'_, AppState>) -> Result<DashboardData, String> {
     state.collector_refresh.notify_one();
-    dashboard(&state)
+    dashboard_from_state(&state).await
 }
 
 #[tauri::command]
@@ -326,16 +340,21 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
 }
 
 #[tauri::command]
-pub fn list_providers(state: State<'_, AppState>) -> Result<Vec<ProviderProbe>, String> {
+pub async fn list_providers(state: State<'_, AppState>) -> Result<Vec<ProviderProbe>, String> {
     let (codex_path, settings) = {
         let database = state.database.lock().map_err(|_| "database lock poisoned".to_owned())?;
         let settings = database.load_settings().map_err(|error| error.to_string())?;
         (settings.codex_path.trim().to_owned(), settings)
     };
-    let mut probes = ai_quota_core::probe_providers_with_codex_path(&codex_path);
-    let order = settings.ordered_provider_ids();
-    probes.sort_by_key(|probe| order.iter().position(|&id| id == probe.id).unwrap_or(usize::MAX));
-    Ok(probes)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut probes = ai_quota_core::probe_providers_with_codex_path(&codex_path);
+        let order = settings.ordered_provider_ids();
+        probes
+            .sort_by_key(|probe| order.iter().position(|&id| id == probe.id).unwrap_or(usize::MAX));
+        probes
+    })
+    .await
+    .map_err(|error| format!("provider probe task failed: {error}"))
 }
 
 #[tauri::command]
