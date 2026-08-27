@@ -71,7 +71,8 @@ fn enabled_quota_probes(
     probes
         .iter()
         .filter(|probe| {
-            probe.quota_collection_supported && enabled_provider_ids.contains(&probe.id)
+            matches!(probe.id, ProviderId::QoderCn | ProviderId::Antigravity)
+                && enabled_provider_ids.contains(&probe.id)
         })
         .cloned()
         .collect()
@@ -254,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_quota_probe_is_not_selected_for_quota_reads() {
+    fn enabled_quota_provider_is_selected_to_return_its_typed_failure() {
         let probes = [probe(ProviderId::QoderCn, false), probe(ProviderId::Antigravity, true)];
 
         let selected =
@@ -262,7 +263,7 @@ mod tests {
 
         assert_eq!(
             selected.iter().map(|probe| probe.id).collect::<Vec<_>>(),
-            [ProviderId::Antigravity]
+            [ProviderId::QoderCn, ProviderId::Antigravity]
         );
     }
 

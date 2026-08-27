@@ -1,5 +1,53 @@
 # Design QA
 
+## Provider quota retention across transient refresh failures — 2026-08-27
+
+- Reported failure: reopening the tray intermittently collapsed it to the Codex group even though
+  Antigravity quota rows had previously loaded successfully.
+- Root cause:
+  - the frontend replaced the cached provider list with every refresh result and cleared the list
+    entirely when the command rejected;
+  - the Tauri command filtered an enabled Antigravity/Qoder probe out when a transient capability
+    check reported unsupported, so the frontend could receive an omitted provider instead of its
+    typed `error` or `unavailable` state.
+- Contract and correction:
+  - `docs/design/ui-spec.md` and `docs/verification.md` now distinguish a transient `error` from an
+    explicit `unavailable` result;
+  - `apps/gui/src-tauri/src/commands.rs` selects enabled interactive quota providers regardless of
+    transient capability-probe support, allowing the existing typed failure path to run;
+  - `apps/gui/src/utils/provider-quotas.ts` keeps the most recent successful row for an incoming
+    `error` or an omitted provider, while accepting later `available` and explicit `unavailable`
+    results. `App.tsx` applies that reconciliation before updating state and local cache and no
+    longer clears good data when the command rejects.
+- Validation:
+  - focused frontend contract: 8 passed; focused Tauri contract: 1 passed;
+  - `just check` passed, including Clippy with warnings denied and 75 frontend tests;
+  - `just test` passed with 71 core Rust tests, 13 Tauri tests, and 75 frontend tests;
+  - frontend formatting, the modified Rust file's Rust 2024 format check, and `git diff --check`
+    passed. Repository-wide `cargo fmt --all -- --check` remains blocked by pre-existing formatting
+    differences in three untouched Rust files.
+- Installed runtime:
+  - `just build-gui` produced the debug application, which was ad-hoc signed, strictly verified,
+    and installed at `/Applications/AI Quota Trends.app`;
+  - built and installed executable SHA-256 match at
+    `9e83aaa768efc0be69e47d7697933cdfb037aaa7f95643229d912a6a08a179b9`;
+  - final PID `43282` owns Codex app-server child PID `43290`; tray `CGWindowID 34365` is
+    338×549 points;
+  - the previous installation backup was removed at the user's request during delivery.
+- Native evidence: the unlocked macOS session was verified through `IOConsoleUsers`; the real
+  CoreGraphics tray window was opened through the verified status item. Open cycles 1 through 5
+  all resolved to 338×549 points, and both the first and fifth captures showed `AGY · Google` and
+  `AGY · Claude`. The fifth capture is
+  `.codex/artifacts/native-qa-20260827-provider-stability/tray-open-5.png`, SHA-256
+  `942dfe9d99afe507ed14e650803dc426cea2149ea13e6e31cc9ecd547b0b413d`.
+- Evidence boundary: automated tests cover a forced typed transient `error`; the installed runtime
+  was not subjected to a destructive provider/environment fault injection, so that exact native
+  failure scenario remains `Not verified` outside the deterministic contract test.
+
+final result: transient provider failures no longer overwrite the last successful AGY rows;
+tests, build, install, signature, process, app-server child, real native capture, and five repeated
+tray openings verified
+
 ## Dark tray opacity adjustment to 86% — 2026-08-27
 
 - User-selected delta: raise only the dark tray material background from Alpha `0.76` to `0.86`;

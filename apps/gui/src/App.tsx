@@ -19,6 +19,7 @@ import { OverviewRoute } from "./routes/overview-route";
 import { SettingsRoute } from "./routes/settings-route";
 import type { AppSettings, DashboardData, ProviderProbe, ProviderQuota, ThemeMode } from "./types";
 import { CACHE_KEYS, loadCachedJson, saveCachedJson } from "./utils/cache";
+import { reconcileProviderQuotaRefresh } from "./utils/provider-quotas";
 import { createSingleFlight } from "./utils/single-flight";
 
 type MainRoute = "overview" | "settings";
@@ -62,6 +63,7 @@ export function AppContent() {
   const providerQuotasLoadedRef = useRef(
     Boolean(loadCachedJson<ProviderQuota[]>(CACHE_KEYS.PROVIDER_QUOTAS)?.length),
   );
+  const providerQuotasRef = useRef(providerQuotas);
   const providerQuotaRequestRef = useRef<Promise<ProviderQuota[]> | null>(null);
   const dashboardLoadRef = useRef(createSingleFlight());
   const settingsReady = settings !== null;
@@ -140,12 +142,13 @@ export function AppContent() {
       providerQuotaRequestRef.current = request;
       try {
         const items = await request;
-        setProviderQuotas(items);
-        saveCachedJson(CACHE_KEYS.PROVIDER_QUOTAS, items);
+        const reconciled = reconcileProviderQuotaRefresh(providerQuotasRef.current, items);
+        providerQuotasRef.current = reconciled;
+        setProviderQuotas(reconciled);
+        saveCachedJson(CACHE_KEYS.PROVIDER_QUOTAS, reconciled);
         providerQuotasLoadedRef.current = true;
         setProviderQuotasLoading(false);
       } catch {
-        setProviderQuotas([]);
         providerQuotasLoadedRef.current = true;
         setProviderQuotasLoading(false);
       } finally {

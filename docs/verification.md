@@ -61,6 +61,10 @@ and its real WKWebView processes must be exercised.
 5. Keep native window rendering, fresh provider data, and command duration as
    separate evidence. A slow provider scan must not be reported as a WebKit blank
    frame, and a fast opaque shell must not be reported as fresh-data completion.
+6. After one successful Antigravity or Qoder quota read, force one typed transient
+   provider `error` result and reopen/focus the tray. The last successful row must
+   remain visible and must not be replaced in cache by the error result. A subsequent
+   `available` result replaces it; an explicit `unavailable` result removes it.
 
 ## Product identity migration
 

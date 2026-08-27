@@ -40,7 +40,11 @@ and used only for Settings. The generated transparent PNG app mark under
   model prompt, and quota rows are rendered only from current finite values. Tray
   quota reads for enabled Qoder CN and Antigravity providers run on initial display, tray focus, and a five-minute fallback; an
   in-flight refresh keeps the current rows until its response atomically replaces
-  them, while errors clear the stale rows. The popover does not render a quota trend chart.
+  them. A successful provider result replaces its previous value, an explicit
+  `unavailable` result clears that provider, and a transient `error` retains the most
+  recent successful value instead of collapsing the tray to Codex-only. When no
+  successful value has ever been collected, no provider row is fabricated. The
+  popover does not render a quota trend chart.
 - Token activity: the borderless section below quota groups today's Token total and its source breakdown in one summary above the history heatmap. The `今日 Token 来源` label and the total share one header row; the total uses the heatmap's brightest purple (`#713bc5` light, `#b47eea` dark) and tabular monospace digits. Provider rows follow directly beneath that header, then one separator introduces the calendar, so all month labels remain visible. The section keeps 12px above the summary, matching the 12px inset below the final heatmap row. The
   dashboard rebuilds this visible provider/model completed-request total from
   model rows, so storage-only account buckets are not rendered and no model rows

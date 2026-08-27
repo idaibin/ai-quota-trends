@@ -1,12 +1,42 @@
 import { describe, expect, it } from "vitest";
 import source from "./App.tsx?raw";
+import type { ProviderQuota, ProviderQuotaStatus } from "./types";
+import { reconcileProviderQuotaRefresh } from "./utils/provider-quotas";
+
+const providerQuota = (
+  status: ProviderQuotaStatus,
+  remainingPercent: number | null = status === "available" ? 72.7 : null,
+): ProviderQuota => ({
+  id: "antigravity",
+  displayName: "Antigravity",
+  status,
+  plan: null,
+  expiresAtRaw: null,
+  expiresAtEpoch: null,
+  pools:
+    remainingPercent == null
+      ? []
+      : [
+          {
+            name: "Gemini 模型 · Weekly Limit Remaining",
+            models: ["Gemini"],
+            used: null,
+            total: null,
+            remainingPercent,
+            refreshAfterSeconds: null,
+            refreshRaw: null,
+          },
+        ],
+  message: status === "available" ? null : "temporary probe failure",
+});
 
 describe("tray provider quota refresh contract", () => {
   it("refreshes on tray focus and on a bounded fallback without hiding current cards", () => {
     expect(source).toContain("PROVIDER_QUOTA_REFRESH_INTERVAL_MS");
     expect(source).toContain('window.addEventListener("focus", handleTrayFocus)');
-    expect(source).toContain("setProviderQuotas(items)");
-    expect(source).toContain("setProviderQuotas([])");
+    expect(source).toContain("reconcileProviderQuotaRefresh(providerQuotasRef.current, items)");
+    expect(source).toContain("setProviderQuotas(reconciled)");
+    expect(source).not.toContain("setProviderQuotas([])");
     expect(source).not.toContain("setProviderQuotasLoading(true);\n    void listProviderQuotas");
   });
 
@@ -43,5 +73,23 @@ describe("tray provider quota refresh contract", () => {
     expect(source).toContain("loadCachedJson<AppSettings>(CACHE_KEYS.SETTINGS)");
     expect(source).toContain("saveCachedJson(CACHE_KEYS.DASHBOARD, dashboardData)");
     expect(source).toContain("saveCachedJson(CACHE_KEYS.SETTINGS, settingsData)");
+  });
+});
+
+describe("provider quota refresh reconciliation", () => {
+  it("keeps the last successful quota across a transient provider error", () => {
+    const previous = providerQuota("available");
+
+    expect(reconcileProviderQuotaRefresh([previous], [providerQuota("error")])).toEqual([previous]);
+  });
+
+  it("accepts a new successful value and an explicit unavailable result", () => {
+    const previous = providerQuota("available", 72.7);
+    const refreshed = providerQuota("available", 68.4);
+
+    expect(reconcileProviderQuotaRefresh([previous], [refreshed])).toEqual([refreshed]);
+    expect(reconcileProviderQuotaRefresh([previous], [providerQuota("unavailable")])).toEqual([
+      providerQuota("unavailable"),
+    ]);
   });
 });
