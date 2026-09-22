@@ -6,6 +6,8 @@ The supplied mockups remain the visual-language reference. The current product
 surface is the macOS menu bar popover; the dashboard window is hidden by default
 and used only for Settings. The generated transparent PNG app mark under
 `apps/gui/public/app-mark.png` is the canonical visible logo asset.
+The parameterized material and ownership contract for the popover is maintained in
+[`visual-assets/tray-frosted-surface.md`](visual-assets/tray-frosted-surface.md).
 
 ## Shell
 
@@ -139,6 +141,24 @@ content insets, 6px dense text spacing, and 16px between Settings groups.
   Settings. It shows the installed version locally, then exposes one progressive
   action for check, download/install, and restart. Checking and installing use a
   spinner; available, ready, latest, and error states reuse existing semantic tokens.
+
+## Component, icon, and motion ownership
+
+- `TrayPopover` owns the menu-bar reading surface and quota/Token composition;
+  `AppShell` owns the Settings surface. Shared controls keep generic interaction and
+  accessibility responsibilities, while provider data, native window lifecycle, and
+  persistence stay in their existing Rust/Tauri owners.
+- Phosphor regular-outline icons remain the ordinary interface icon owner. Do not
+  migrate to Lucide merely to match a cross-project default. The app mark and
+  monochrome tray-template image are product assets, not members of the control icon
+  family. Icon-only controls keep their accessible name on the owning button.
+- CSS owns the current hover, focus, loading, and state transitions. No JavaScript
+  animation engine is required for this compact utility surface. Each transitioned
+  property has one CSS owner, and the global reduced-motion rule suppresses
+  nonessential animation without hiding state.
+- Visible provider names, React/component symbols, Tauri window labels, provider IDs,
+  and deep-link/query identifiers are distinct contracts. Copy changes must not rename
+  stable identifiers unless that behavior is separately approved.
 
 ## Responsive behavior
 
