@@ -61,15 +61,25 @@ describe("tray quota overview", () => {
         refreshAfterSeconds: null,
         refreshRaw: null,
       },
+      {
+        name: "GEMINI MODELS · Five Hour Limit Remaining",
+        models: ["Gemini Pro"],
+        used: null,
+        total: null,
+        remainingPercent: 91,
+        refreshAfterSeconds: null,
+        refreshRaw: null,
+      },
     ]);
 
     expect(groups).toHaveLength(1);
     expect(groups[0]?.label).toBe("AGY · Google");
     expect(groups[0]?.pools.map((pool) => pool.windowLabel)).toEqual([
+      "5小时",
       "每周",
       "Daily Limit Remaining",
     ]);
-    expect(groups[0]?.pools[1]?.windowKind).toBe("unknown");
+    expect(groups[0]?.pools[2]?.windowKind).toBe("unknown");
   });
 
   it("only marks real finite quota sources as visible", () => {
@@ -123,11 +133,11 @@ describe("tray quota overview", () => {
       shouldRenderQuotaProvider({
         providerId: "zcode",
         quotaWindow: undefined,
-        providerQuota: undefined,
+        providerQuota: { ...quota, id: "zcode", displayName: "ZCode" },
         enabled: true,
         loading: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("calculates the tray height from natural provider and Token sections", () => {
@@ -242,8 +252,8 @@ describe("tray quota overview", () => {
             executablePath: "/usr/local/bin/zcode",
             version: "0.16.1",
             status: "available",
-            quotaCollectionSupported: false,
-            supportNote: "额度接口尚未验证",
+            quotaCollectionSupported: true,
+            supportNote: "已接入账户周期额度",
           },
           {
             id: "claude",
@@ -277,6 +287,35 @@ describe("tray quota overview", () => {
           },
         ],
         providerQuotas: [
+          {
+            id: "zcode",
+            displayName: "ZCode",
+            status: "available",
+            plan: "max",
+            expiresAtRaw: null,
+            expiresAtEpoch: null,
+            pools: [
+              {
+                name: "5小时",
+                models: [],
+                used: 28136,
+                total: 28000,
+                remainingPercent: 0,
+                refreshAfterSeconds: 8_160,
+                refreshRaw: "1789037434778",
+              },
+              {
+                name: "每周",
+                models: [],
+                used: 67403,
+                total: 140000,
+                remainingPercent: 52,
+                refreshAfterSeconds: 64_380,
+                refreshRaw: "1789093640971",
+              },
+            ],
+            message: null,
+          },
           {
             id: "qoder-cn",
             displayName: "Qoder 国内版",
@@ -359,6 +398,9 @@ describe("tray quota overview", () => {
 
     expect(markup).toContain('<dt class="tray-token-metric-label">今日 Token 来源</dt>');
     expect(markup).toContain('aria-label="Codex 额度"');
+    expect(markup).toContain('aria-label="ZCode 额度"');
+    expect(markup).toContain('aria-label="ZCode 5小时 额度"');
+    expect(markup).toContain('aria-label="ZCode 每周 额度"');
     expect(markup).toContain('aria-label="Qoder 国内版 额度"');
     expect(markup).toContain('aria-label="AGY · Google 额度"');
     expect(markup).toContain('aria-label="AGY · Google 每周 额度"');
@@ -367,20 +409,26 @@ describe("tray quota overview", () => {
     expect(markup).toContain('aria-label="AGY · Claude 每周 额度"');
     expect(markup).toContain('aria-label="AGY · Claude 5小时 额度"');
     expect(markup).toContain('data-provider="codex"');
+    expect(markup).toContain('data-provider="zcode"');
     expect(markup).toContain('data-provider="qoder-cn"');
     expect(markup).toContain('data-group="gemini"');
     expect(markup).toContain('data-group="claude"');
     expect(markup.match(/tray-quota-row/g)).toHaveLength(2);
-    expect(markup.match(/tray-quota-group/g)).toHaveLength(4);
-    expect(markup.match(/tray-quota-window-row /g)).toHaveLength(4);
-    expect(markup.match(/tray-quota-meter(?:\s|")/g)).toHaveLength(6);
-    expect(markup.match(/tray-quota-meter--window/g)).toHaveLength(4);
+    expect(markup.match(/tray-quota-group/g)).toHaveLength(6);
+    expect(markup.match(/tray-quota-window-row /g)).toHaveLength(6);
+    expect(markup.match(/tray-quota-meter(?:\s|")/g)).toHaveLength(8);
+    expect(markup.match(/tray-quota-meter--window/g)).toHaveLength(6);
+    expect(markup).not.toContain("tray-quota-window-main");
+    expect(
+      markup.match(
+        /tray-quota-window-row[^>]*>[\s\S]*?tray-quota-window-identity[\s\S]*?tray-quota-meter tray-quota-meter--window/g,
+      ),
+    ).toHaveLength(6);
     expect(markup).toMatch(/tray-quota-meter[\s\S]*?tray-quota-track[\s\S]*?tray-quota-percent/);
     expect(markup).toMatch(
       /tray-quota-window-row tray-quota-window-row--weekly[\s\S]*?tray-quota-window-identity[\s\S]*?tray-quota-window-label[\s\S]*?tray-quota-duration[\s\S]*?tray-quota-meter tray-quota-meter--window[\s\S]*?tray-quota-track tray-quota-track--window[\s\S]*?tray-quota-percent/,
     );
     expect(markup).toContain("Codex");
-    expect(markup).not.toContain('aria-label="ZCode 额度"');
     expect(markup).not.toContain('aria-label="Claude CLI 额度"');
     expect(markup).toContain("Qoder 国内版");
     expect(markup).not.toContain('aria-label="Antigravity 额度"');
@@ -396,6 +444,10 @@ describe("tray quota overview", () => {
     expect(markup).not.toContain("加购额度");
     expect(markup).not.toContain(">暂无<");
     expect(markup).toContain("1 / 300 · Pro Trial");
+    expect(markup).toContain("2.81万 / 2.8万");
+    expect(markup).toContain("6.74万 / 14万");
+    expect(markup).toContain("0%");
+    expect(markup).toContain("52%");
     expect(markup).toMatch(
       /tray-quota-identity[\s\S]*?<strong>Codex<\/strong>[\s\S]*?tray-quota-duration/,
     );
@@ -409,6 +461,13 @@ describe("tray quota overview", () => {
     expect(markup).toContain(">5小时<");
     expect(markup).toContain("tray-quota-window-row--weekly");
     expect(markup).toContain("tray-quota-window-row--five-hour");
+    expect(markup.indexOf("ZCode 5小时 额度")).toBeLessThan(markup.indexOf("ZCode 每周 额度"));
+    expect(markup.indexOf("AGY · Google 5小时 额度")).toBeLessThan(
+      markup.indexOf("AGY · Google 每周 额度"),
+    );
+    expect(markup.indexOf("AGY · Claude 5小时 额度")).toBeLessThan(
+      markup.indexOf("AGY · Claude 每周 额度"),
+    );
     expect(markup).toContain("react-activity-calendar");
     expect(markup).not.toContain("tray-quota-track--muted");
     expect(markup).not.toContain("tray-provider-state");
@@ -416,7 +475,8 @@ describe("tray quota overview", () => {
     expect(markup).not.toContain("tray-token-card");
     expect(markup).not.toContain("<select");
     expect(markup).not.toContain("tray-chart-card");
-    expect(markup.indexOf("Codex")).toBeLessThan(markup.indexOf("Qoder 国内版"));
+    expect(markup.indexOf("Codex")).toBeLessThan(markup.indexOf("ZCode"));
+    expect(markup.indexOf("ZCode")).toBeLessThan(markup.indexOf("Qoder 国内版"));
     expect(markup.indexOf("Qoder 国内版")).toBeLessThan(markup.indexOf("AGY · Google"));
   });
 

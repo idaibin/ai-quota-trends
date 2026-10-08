@@ -71,7 +71,7 @@ fn enabled_quota_probes(
     probes
         .iter()
         .filter(|probe| {
-            matches!(probe.id, ProviderId::QoderCn | ProviderId::Antigravity)
+            matches!(probe.id, ProviderId::Zcode | ProviderId::QoderCn | ProviderId::Antigravity)
                 && enabled_provider_ids.contains(&probe.id)
         })
         .cloned()
@@ -268,9 +268,9 @@ mod tests {
     }
 
     #[test]
-    fn codex_and_zcode_probes_produce_no_quota_reads() {
-        let probes = [probe(ProviderId::Codex, false), probe(ProviderId::Zcode, false)];
-        let selected = enabled_quota_probes(&probes, &[ProviderId::Codex, ProviderId::Zcode]);
+    fn codex_and_claude_probes_produce_no_quota_reads() {
+        let probes = [probe(ProviderId::Codex, false), probe(ProviderId::Claude, false)];
+        let selected = enabled_quota_probes(&probes, &[ProviderId::Codex, ProviderId::Claude]);
 
         assert!(ai_quota_core::read_provider_quotas(&selected).is_empty());
     }

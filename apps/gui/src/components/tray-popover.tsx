@@ -30,8 +30,8 @@ const providerFallbacks: ProviderProbe[] = [
     executablePath: null,
     version: null,
     status: "missing",
-    quotaCollectionSupported: false,
-    supportNote: "本地 Token 明细已接入",
+    quotaCollectionSupported: true,
+    supportNote: "账户 5 小时与周额度及本地 Token 明细已接入",
   },
   {
     id: "claude",
@@ -91,6 +91,11 @@ export const formatQuotaPercent = (remainingPercent: number | null) => {
   return `${displayQuotaPercent(remainingPercent)}%`;
 };
 
+export const formatCompactNumber = (value: number) => {
+  if (Math.abs(value) < 10_000) return value.toLocaleString("zh-CN");
+  return `${Number((value / 10_000).toFixed(2))}万`;
+};
+
 const displayQuotaPercent = (remainingPercent: number) => {
   const bounded = Math.max(0, Math.min(100, remainingPercent));
   const digits = Math.abs(bounded - Math.round(bounded)) < 0.05 ? 0 : 1;
@@ -103,6 +108,59 @@ const quotaStatusClass = (displayedRemainingPercent: number) =>
     : displayedRemainingPercent <= 20
       ? " tray-quota-status--warning"
       : "";
+
+type QuotaWindowRowProps = {
+  ariaLabel: string;
+  label: string;
+  remainingPercent: number;
+  refreshDuration: string | null;
+  windowKind: AntigravityWindowKind;
+  metadata?: string | null;
+  title?: string;
+};
+
+const QuotaWindowRow = ({
+  ariaLabel,
+  label,
+  remainingPercent,
+  refreshDuration,
+  windowKind,
+  metadata = null,
+  title,
+}: QuotaWindowRowProps) => {
+  const remaining = boundedPercent(remainingPercent);
+  const displayedRemaining = displayQuotaPercent(remaining);
+  return (
+    <div
+      className={`tray-quota-window-row tray-quota-window-row--${windowKind}${quotaStatusClass(displayedRemaining)}`}
+      aria-label={`${ariaLabel} 额度`}
+      title={title}
+    >
+      <div className="tray-quota-window-identity">
+        <span className="tray-quota-window-label">{label}</span>
+        {refreshDuration ? (
+          <span className="tray-quota-duration" aria-label={`${refreshDuration}后刷新`}>
+            {refreshDuration}
+          </span>
+        ) : null}
+        {metadata ? <span className="tray-quota-meta">{metadata}</span> : null}
+      </div>
+      <div className="tray-quota-meter tray-quota-meter--window">
+        <div
+          className="tray-quota-track tray-quota-track--window"
+          role="progressbar"
+          aria-label={`${ariaLabel}剩余额度`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={remaining}
+        >
+          <span style={{ width: `${remaining}%` }} />
+        </div>
+        <b className="tray-quota-percent">{formatQuotaPercent(remaining)}</b>
+      </div>
+    </div>
+  );
+};
 
 export const formatRefreshDuration = (seconds: number | null) => {
   if (seconds == null) return null;
@@ -126,6 +184,12 @@ export const formatQuotaPoolName = (providerId: string, name: string) => {
 };
 
 type AntigravityWindowKind = "weekly" | "five-hour" | "unknown";
+
+const quotaWindowOrder: Record<AntigravityWindowKind, number> = {
+  "five-hour": 0,
+  weekly: 1,
+  unknown: 2,
+};
 
 const formatAntigravityGroupName = (name: string) => {
   const normalized = name.trim().toUpperCase();
@@ -211,7 +275,12 @@ export const groupAntigravityQuotaPools = (pools: ProviderQuota["pools"] = []) =
     groups.set(window.groupKey, group);
   });
 
-  return [...groups.values()];
+  return [...groups.values()].map((group) => ({
+    ...group,
+    pools: [...group.pools].sort(
+      (left, right) => quotaWindowOrder[left.windowKind] - quotaWindowOrder[right.windowKind],
+    ),
+  }));
 };
 
 const boundedPercent = (value: number) => Math.max(0, Math.min(100, value));
@@ -245,7 +314,6 @@ export const shouldRenderQuotaProvider = ({
   loading: boolean;
 }) => {
   if (providerId === "codex") return hasVisibleCodexQuota(quotaWindow);
-  if (providerId === "zcode") return false;
   return hasVisibleLocalQuota(providerQuota, enabled, loading);
 };
 
@@ -407,6 +475,7 @@ export function TrayPopover({
                 const isCodex = provider.id === "codex";
                 const isAntigravity = provider.id === "antigravity";
                 const isQoder = provider.id === "qoder-cn";
+                const isZcode = provider.id === "zcode";
                 const providerQuota = quotasByProvider.get(provider.id);
 
                 if (isCodex) {
@@ -451,6 +520,49 @@ export function TrayPopover({
                   ];
                 }
 
+                if (isZcode && providerQuota) {
+                  const pools = (providerQuota.pools ?? []).filter(hasFiniteRemaining);
+                  pools.sort((left, right) => {
+                    const leftKind = left.name === "5小时" ? "five-hour" : "weekly";
+                    const rightKind = right.name === "5小时" ? "five-hour" : "weekly";
+                    return quotaWindowOrder[leftKind] - quotaWindowOrder[rightKind];
+                  });
+                  if (pools.length === 0) return [];
+                  return [
+                    <div
+                      key={provider.id}
+                      className="tray-quota-group"
+                      data-provider="zcode"
+                      aria-label="ZCode 额度"
+                    >
+                      <div className="tray-quota-group-header">
+                        <strong>ZCode</strong>
+                      </div>
+                      <div className="tray-quota-window-list">
+                        {pools.map((pool) => {
+                          const windowKind = pool.name === "5小时" ? "five-hour" : "weekly";
+                          const refreshDuration = formatRefreshDuration(pool.refreshAfterSeconds);
+                          const points =
+                            pool.used != null && pool.total != null
+                              ? `${formatCompactNumber(pool.used)} / ${formatCompactNumber(pool.total)}`
+                              : null;
+                          return (
+                            <QuotaWindowRow
+                              key={pool.name}
+                              ariaLabel={`ZCode ${pool.name}`}
+                              label={pool.name}
+                              remainingPercent={pool.remainingPercent ?? 0}
+                              refreshDuration={refreshDuration}
+                              windowKind={windowKind}
+                              metadata={points}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>,
+                  ];
+                }
+
                 if (isAntigravity && providerQuota) {
                   return groupAntigravityQuotaPools(
                     (providerQuota.pools ?? []).filter(hasFiniteRemaining),
@@ -474,46 +586,19 @@ export function TrayPopover({
                         </div>
                         <div className="tray-quota-window-list">
                           {group.pools.map(({ index, pool, windowKind, windowLabel }) => {
-                            const remaining = boundedPercent(pool?.remainingPercent ?? 0);
-                            const displayedRemaining = displayQuotaPercent(remaining);
                             const refreshDuration = formatRefreshDuration(
                               pool?.refreshAfterSeconds ?? null,
                             );
-                            const statusClass = quotaStatusClass(displayedRemaining);
                             return (
-                              <div
-                                className={`tray-quota-window-row tray-quota-window-row--${windowKind}${statusClass}`}
+                              <QuotaWindowRow
                                 key={`${provider.id}:${group.key}:${pool.name}:${index}`}
-                                aria-label={`${group.label} ${windowLabel} 额度`}
+                                ariaLabel={`${group.label} ${windowLabel}`}
+                                label={windowLabel}
+                                remainingPercent={pool?.remainingPercent ?? 0}
+                                refreshDuration={refreshDuration}
+                                windowKind={windowKind}
                                 title={pool.name}
-                              >
-                                <div className="tray-quota-window-identity">
-                                  <span className="tray-quota-window-label">{windowLabel}</span>
-                                  {refreshDuration && (
-                                    <span
-                                      className="tray-quota-duration"
-                                      aria-label={`${refreshDuration}后刷新`}
-                                    >
-                                      {refreshDuration}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="tray-quota-meter tray-quota-meter--window">
-                                  <div
-                                    className="tray-quota-track tray-quota-track--window"
-                                    role="progressbar"
-                                    aria-label={`${group.label} ${windowLabel}剩余额度`}
-                                    aria-valuemin={0}
-                                    aria-valuemax={100}
-                                    aria-valuenow={remaining}
-                                  >
-                                    <span style={{ width: `${remaining}%` }} />
-                                  </div>
-                                  <b className="tray-quota-percent">
-                                    {formatQuotaPercent(remaining)}
-                                  </b>
-                                </div>
-                              </div>
+                              />
                             );
                           })}
                         </div>

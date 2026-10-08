@@ -114,7 +114,9 @@ impl AppSettings {
 
     pub fn provider_mode(&self, provider_id: ProviderId) -> ProviderUsageMode {
         if let Some(&mode) = self.provider_modes.get(&provider_id) {
-            if mode == ProviderUsageMode::Disabled || !self.enabled_provider_ids.contains(&provider_id) {
+            if mode == ProviderUsageMode::Disabled
+                || !self.enabled_provider_ids.contains(&provider_id)
+            {
                 ProviderUsageMode::Disabled
             } else {
                 mode
@@ -350,11 +352,8 @@ mod tests {
         assert!(!settings.is_provider_collecting(ProviderId::Claude));
         assert!(!settings.is_provider_displaying(ProviderId::Claude));
 
-        settings.provider_order = vec![
-            ProviderId::Antigravity,
-            ProviderId::QoderCn,
-            ProviderId::Codex,
-        ];
+        settings.provider_order =
+            vec![ProviderId::Antigravity, ProviderId::QoderCn, ProviderId::Codex];
         assert_eq!(
             settings.ordered_provider_ids(),
             [

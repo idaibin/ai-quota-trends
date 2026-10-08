@@ -11,6 +11,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, FixedOffset};
+use reqwest::{Url, blocking::Client, redirect::Policy};
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -113,7 +114,12 @@ const PROVIDERS: [ProviderDescriptor; 5] = [
         id: ProviderId::Codex,
         display_name: "Codex",
         command_name: "codex",
-        home_candidates: &[".volta/bin/codex", ".local/bin/codex"],
+        home_candidates: &[
+            "Library/pnpm/bin/codex",
+            ".local/share/pnpm/bin/codex",
+            ".local/bin/codex",
+            ".volta/bin/codex",
+        ],
         version_args: &["--version"],
         quota_collection_supported: true,
         support_note: "已接入额度与 Token 活动采集",
@@ -124,8 +130,8 @@ const PROVIDERS: [ProviderDescriptor; 5] = [
         command_name: "zcode",
         home_candidates: &[".local/bin/zcode"],
         version_args: &["version"],
-        quota_collection_supported: false,
-        support_note: "已接入本地模型 Token 明细",
+        quota_collection_supported: true,
+        support_note: "已接入账户 5 小时与周额度及本地模型 Token 明细",
     },
     ProviderDescriptor {
         id: ProviderId::Claude,
@@ -227,11 +233,144 @@ pub fn read_provider_quotas(probes: &[ProviderProbe]) -> Vec<ProviderQuota> {
     probes
         .iter()
         .filter_map(|probe| match probe.id {
+            ProviderId::Zcode => Some(read_zcode_quota(probe)),
             ProviderId::QoderCn => Some(read_qoder_quota(probe)),
             ProviderId::Antigravity => Some(read_antigravity_quota(probe)),
-            ProviderId::Codex | ProviderId::Zcode | ProviderId::Claude => None,
+            ProviderId::Codex | ProviderId::Claude => None,
         })
         .collect()
+}
+
+fn read_zcode_quota(probe: &ProviderProbe) -> ProviderQuota {
+    if probe.status == ProviderProbeStatus::Missing {
+        return unavailable_quota(ProviderId::Zcode, "ZCode", "本地 CLI 不可用");
+    }
+    if probe.status == ProviderProbeStatus::Error {
+        return error_quota(ProviderId::Zcode, "ZCode", "本地 CLI 版本探测失败");
+    }
+    let Some(home) = env::var_os("HOME").map(PathBuf::from) else {
+        return unavailable_quota(ProviderId::Zcode, "ZCode", "无法定位本地 ZCode 数据");
+    };
+    match read_zcode_quota_from(&home.join(".zcode/cli/config.json")) {
+        Ok(Some(quota)) => quota,
+        Ok(None) => unavailable_quota(ProviderId::Zcode, "ZCode", "未找到已配置的 BigModel 账户"),
+        Err(error) => error_quota(ProviderId::Zcode, "ZCode", error.to_string()),
+    }
+}
+
+fn read_zcode_quota_from(config_path: &Path) -> Result<Option<ProviderQuota>> {
+    if !config_path.is_file() {
+        return Ok(None);
+    }
+    let config: serde_json::Value = serde_json::from_str(&fs::read_to_string(config_path)?)?;
+    let options = config.pointer("/provider/bigmodel/options");
+    let Some((base_url, api_key)) = options.and_then(|value| {
+        Some((value.get("baseURL")?.as_str()?.trim(), value.get("apiKey")?.as_str()?.trim()))
+    }) else {
+        return Ok(None);
+    };
+    if base_url.is_empty() || api_key.is_empty() {
+        return Ok(None);
+    }
+    let endpoint = zcode_quota_endpoint(base_url)?;
+    let response = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .redirect(Policy::none())
+        .build()?
+        .get(endpoint)
+        .bearer_auth(api_key)
+        .send()
+        .context("ZCode account quota request failed")?
+        .error_for_status()
+        .context("ZCode account quota request returned an error")?
+        .text()?;
+    Ok(Some(parse_zcode_quota_response(
+        &response,
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+    )?))
+}
+
+fn zcode_quota_endpoint(base_url: &str) -> Result<Url> {
+    let mut endpoint = Url::parse(base_url).context("ZCode BigModel base URL is invalid")?;
+    if endpoint.scheme() != "https"
+        || endpoint.host_str() != Some("open.bigmodel.cn")
+        || endpoint.port_or_known_default() != Some(443)
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+    {
+        anyhow::bail!("ZCode BigModel quota requires the official HTTPS host");
+    }
+    endpoint.set_path("/api/monitor/usage/quota/limit");
+    endpoint.set_query(None);
+    endpoint.set_fragment(None);
+    Ok(endpoint)
+}
+
+fn parse_zcode_quota_response(response: &str, now_epoch_seconds: u64) -> Result<ProviderQuota> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Limit {
+        #[serde(rename = "type")]
+        limit_type: String,
+        unit: u64,
+        number: u64,
+        usage: u64,
+        current_value: u64,
+        percentage: f64,
+        next_reset_time: Option<u64>,
+    }
+    #[derive(Deserialize)]
+    struct Data {
+        limits: Vec<Limit>,
+        level: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct Envelope {
+        data: Data,
+    }
+
+    let envelope: Envelope =
+        serde_json::from_str(response).context("invalid ZCode quota response")?;
+    let pools = envelope
+        .data
+        .limits
+        .into_iter()
+        .filter_map(|limit| {
+            if limit.limit_type != "CREDIT_LIMIT" {
+                return None;
+            }
+            let name = match (limit.unit, limit.number) {
+                (3, 5) => "5小时",
+                (6, 1) => "每周",
+                _ => return None,
+            };
+            let refresh_after_seconds = limit
+                .next_reset_time
+                .map(|millis| (millis / 1_000).saturating_sub(now_epoch_seconds));
+            Some(ProviderQuotaPool {
+                name: name.to_owned(),
+                models: Vec::new(),
+                used: Some(limit.current_value),
+                total: Some(limit.usage),
+                remaining_percent: Some((100.0 - limit.percentage).clamp(0.0, 100.0)),
+                refresh_after_seconds,
+                refresh_raw: limit.next_reset_time.map(|value| value.to_string()),
+            })
+        })
+        .collect::<Vec<_>>();
+    if pools.is_empty() {
+        anyhow::bail!("ZCode quota response contains no supported windows");
+    }
+    Ok(ProviderQuota {
+        id: ProviderId::Zcode,
+        display_name: "ZCode".to_owned(),
+        status: ProviderQuotaStatus::Available,
+        plan: envelope.data.level,
+        expires_at_raw: None,
+        expires_at_epoch: None,
+        pools,
+        message: None,
+    })
 }
 
 fn read_qoder_quota(probe: &ProviderProbe) -> ProviderQuota {
@@ -1303,7 +1442,7 @@ fn read_zcode_model_activity_from(
                 SUM(MIN(cache_read_input_tokens, input_tokens)),
                 COUNT(DISTINCT session_id),
                 COUNT(*),
-                SUM(MAX(computed_total_tokens, input_tokens))
+                SUM(computed_total_tokens)
          FROM model_usage
          WHERE status = 'completed'
            AND date(started_at / 1000, 'unixepoch', 'localtime') >= ?1
@@ -1434,8 +1573,8 @@ fn stop_child(child: &mut Child) {
 mod tests {
     use super::{
         PROVIDERS, ProviderId, ProviderProbeStatus, ProviderQuotaStatus, VERSION_PROBE_TIMEOUT,
-        parse_antigravity_quota, parse_qoder_quota, probe_providers_with_codex_path,
-        provider_capability,
+        parse_antigravity_quota, parse_qoder_quota, parse_zcode_quota_response,
+        probe_providers_with_codex_path, provider_capability, zcode_quota_endpoint,
     };
     use std::{
         fs,
@@ -1459,7 +1598,7 @@ mod tests {
             ]
         );
         assert!(PROVIDERS[0].quota_collection_supported);
-        assert!(!PROVIDERS[1].quota_collection_supported);
+        assert!(PROVIDERS[1].quota_collection_supported);
         assert!(!PROVIDERS[2].quota_collection_supported);
         assert!(PROVIDERS[3..].iter().all(|provider| provider.quota_collection_supported));
     }
@@ -1604,6 +1743,50 @@ mod tests {
         assert_eq!(models[0].today.cached_input_tokens, 110);
         assert_eq!(models[0].today.session_count, 2);
         assert_eq!(models[0].today.call_count, 3);
+    }
+
+    #[test]
+    fn parses_zcode_account_five_hour_and_weekly_credit_windows() {
+        let quota = parse_zcode_quota_response(
+            r#"{"data":{"limits":[{"type":"CREDIT_LIMIT","unit":3,"number":5,"usage":28000,"currentValue":28136,"remaining":0,"percentage":100,"nextResetTime":1789037434778},{"type":"CREDIT_LIMIT","unit":6,"number":1,"usage":140000,"currentValue":67403,"remaining":72596,"percentage":48,"nextResetTime":1789093640971}],"level":"max"}}"#,
+            1_789_030_000,
+        )
+        .unwrap();
+
+        assert_eq!(quota.status, ProviderQuotaStatus::Available);
+        assert_eq!(quota.plan.as_deref(), Some("max"));
+        assert_eq!(quota.pools.len(), 2);
+        assert_eq!(quota.pools[0].name, "5小时");
+        assert_eq!(quota.pools[0].used, Some(28_136));
+        assert_eq!(quota.pools[0].total, Some(28_000));
+        assert_eq!(quota.pools[0].remaining_percent, Some(0.0));
+        assert_eq!(quota.pools[0].refresh_after_seconds, Some(7_434));
+        assert_eq!(quota.pools[1].name, "每周");
+        assert_eq!(quota.pools[1].remaining_percent, Some(52.0));
+        assert_eq!(quota.pools[1].refresh_after_seconds, Some(63_640));
+    }
+
+    #[test]
+    fn zcode_quota_endpoint_rejects_nonofficial_or_insecure_hosts() {
+        let endpoint = zcode_quota_endpoint("https://open.bigmodel.cn/api/paas/v4").unwrap();
+        assert_eq!(endpoint.as_str(), "https://open.bigmodel.cn/api/monitor/usage/quota/limit");
+        for base in [
+            "http://open.bigmodel.cn/api/paas/v4",
+            "https://other.example/api/paas/v4",
+            "https://open.bigmodel.cn:8443/api/paas/v4",
+            "https://user@open.bigmodel.cn/api/paas/v4",
+        ] {
+            assert!(zcode_quota_endpoint(base).is_err(), "accepted {base}");
+        }
+    }
+
+    #[test]
+    fn zcode_quota_ignores_non_credit_limits_with_matching_window_length() {
+        let response = r#"{"data":{"limits":[{"type":"TOKEN_LIMIT","unit":3,"number":5,"usage":500,"currentValue":499,"percentage":99,"nextResetTime":null},{"type":"CREDIT_LIMIT","unit":6,"number":1,"usage":100,"currentValue":25,"percentage":25,"nextResetTime":null}]}}"#;
+        let quota = parse_zcode_quota_response(response, 0).unwrap();
+        assert_eq!(quota.pools.len(), 1);
+        assert_eq!(quota.pools[0].name, "每周");
+        assert_eq!(quota.pools[0].used, Some(25));
     }
 
     #[test]

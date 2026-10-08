@@ -30,11 +30,11 @@ ai-quota-trends
 
 ## 1.1 产品定位
 
-AI Quota Trends 是一个 macOS 本地优先（Local-first）的多 AI 服务额度与 Token 使用仪表盘。当前持续采集 Codex 额度与 Token 活动，只读汇总 ZCode 与 Claude CLI 本地 Token 记录，并通过已安装 CLI 的额度界面读取 Qoder 国内版和 Antigravity 当前额度。
+AI Quota Trends 是一个 macOS 本地优先（Local-first）的多 AI 服务额度与 Token 使用仪表盘。当前持续采集 Codex 额度与 Token 活动，只读汇总 ZCode 与 Claude CLI 本地 Token 记录，从 ZCode 已配置的 BigModel Coding Plan 官方额度接口读取账户的 5 小时与周额度，并通过已安装 CLI 的额度界面读取 Qoder 国内版和 Antigravity 当前额度。
 
-菜单栏标题仍固定使用 Codex 额度。弹出窗一次完整展示所有已启用工具，不提供切换器；Codex 展示持久化额度窗口，Qoder 国内版展示套餐与 Credit，Antigravity 展示两个共享模型池。ZCode 当前只展示已接入 Token 明细，不虚构账户额度。弹出窗不展示 Codex 趋势图。
+菜单栏标题仍固定使用 Codex 额度。弹出窗一次完整展示所有已启用工具，不提供切换器；Codex 展示持久化额度窗口，ZCode 展示账户级 5 小时与周 Credit 窗口，Qoder 国内版展示套餐与 Credit，Antigravity 展示两个共享模型池。ZCode 的接口返回已使用百分比，展示层统一转换为剩余百分比，并保留积分用量与重置时间。弹出窗不展示 Codex 趋势图。
 
-Token 热力图以本地已完成请求的 total Token 为统一口径，汇总 Codex 与可验证的本地工具记录。每日悬停仅显示日期与 provider subtotal，不重复当天总量，也不展示 model 子行；可见 provider subtotal 与当天总量对账。
+Token 热力图汇总 Codex 与可验证的本地工具记录。ZCode 使用其每个已完成请求记录的 `computed_total_tokens`，与 ZCode 自身的 `totalTokens` 口径一致，包含缓存读取 Token；缓存与非缓存输入仍保留为诊断拆分。每日悬停仅显示日期与 provider subtotal，不重复当天总量，也不展示 model 子行；可见 provider subtotal 与当天总量对账。
 
 核心目标：
 
@@ -653,9 +653,11 @@ Above pace
 ## Settings
 
 The Settings UI does not display or edit a Codex executable path. For backward
-compatibility, a non-empty persisted `codexPath` value remains an internal
-collector override; empty values use `PATH` first, then Volta/local and Homebrew
-locations. The provider catalog displays status and version only.
+compatibility, an executable persisted `codexPath` value remains an internal
+collector override. Empty, missing, or non-executable overrides fall back to `PATH`,
+`PNPM_HOME` (root and bin shim layouts), standard pnpm/local and Homebrew locations.
+Reconnect repeats discovery; stored overrides are preserved. The provider catalog
+and collector share this resolver and display status and version only.
 The General group contains collection frequency, launch-at-login, menu-bar-only,
 and theme controls; the obsolete floating-window trend-range control is not shown.
 Models & Tools is a compact single-column catalog. Codex is the primary read-only

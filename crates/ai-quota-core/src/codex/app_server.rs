@@ -121,17 +121,36 @@ impl AppServerClient {
 pub fn resolve_codex_program(configured_path: &str) -> Option<PathBuf> {
     let path = env::var_os("PATH");
     let home = env::var_os("HOME");
-    resolve_codex_program_from_env(configured_path, path.as_deref(), home.as_deref().map(Path::new))
+    let pnpm_home = env::var_os("PNPM_HOME");
+    resolve_codex_program_from_locations(
+        configured_path,
+        path.as_deref(),
+        home.as_deref().map(Path::new),
+        pnpm_home.as_deref().map(Path::new),
+    )
 }
 
+#[cfg(test)]
 fn resolve_codex_program_from_env(
     configured_path: &str,
     path: Option<&OsStr>,
     home: Option<&Path>,
 ) -> Option<PathBuf> {
+    resolve_codex_program_from_locations(configured_path, path, home, None)
+}
+
+fn resolve_codex_program_from_locations(
+    configured_path: &str,
+    path: Option<&OsStr>,
+    home: Option<&Path>,
+    pnpm_home: Option<&Path>,
+) -> Option<PathBuf> {
     let configured_path = configured_path.trim();
     if !configured_path.is_empty() {
-        return Some(expand_home(configured_path, home));
+        let candidate = expand_home(configured_path, home);
+        if is_executable(&candidate) {
+            return Some(candidate);
+        }
     }
 
     if let Some(path) = path {
@@ -139,20 +158,46 @@ fn resolve_codex_program_from_env(
             env::split_paths(path).filter(|directory| !directory.as_os_str().is_empty())
         {
             let candidate = directory.join("codex");
-            if candidate.is_file() {
+            if is_executable(&candidate) {
                 return Some(candidate);
             }
         }
     }
 
-    let mut candidates = home
-        .map(Path::to_path_buf)
+    let mut candidates = pnpm_home
+        .filter(|directory| directory.is_absolute())
         .into_iter()
-        .flat_map(|home| [home.join(".volta/bin/codex"), home.join(".local/bin/codex")])
+        .flat_map(|directory| [directory.join("codex"), directory.join("bin/codex")])
         .collect::<Vec<_>>();
+    candidates.extend(home.map(Path::to_path_buf).into_iter().flat_map(|home| {
+        [
+            home.join("Library/pnpm/bin/codex"),
+            home.join("Library/pnpm/codex"),
+            home.join(".local/share/pnpm/bin/codex"),
+            home.join(".local/share/pnpm/codex"),
+            home.join(".local/bin/codex"),
+            home.join(".volta/bin/codex"),
+        ]
+    }));
     candidates
         .extend([PathBuf::from("/opt/homebrew/bin/codex"), PathBuf::from("/usr/local/bin/codex")]);
-    candidates.into_iter().find(|candidate| candidate.is_file())
+    candidates.into_iter().find(|candidate| is_executable(candidate))
+}
+
+fn is_executable(path: &Path) -> bool {
+    let Ok(metadata) = path.metadata() else { return false };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 fn expand_home(path: &str, home: Option<&Path>) -> PathBuf {
@@ -179,7 +224,9 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{resolve_codex_program, resolve_codex_program_from_env};
+    use super::{
+        resolve_codex_program, resolve_codex_program_from_env, resolve_codex_program_from_locations,
+    };
 
     fn write_executable(path: &Path) {
         fs::write(path, "#!/bin/sh\n").unwrap();
@@ -212,13 +259,77 @@ mod tests {
     #[test]
     fn empty_path_discovers_the_home_codex_install() {
         let temp = tempdir().unwrap();
-        let configured = temp.path().join(".volta/bin/codex");
+        let configured = temp.path().join("Library/pnpm/bin/codex");
         fs::create_dir_all(configured.parent().unwrap()).unwrap();
         write_executable(&configured);
 
         assert_eq!(
             resolve_codex_program_from_env("", Some(OsStr::new("")), Some(temp.path())),
             Some(configured)
+        );
+    }
+
+    #[test]
+    fn empty_path_retains_volta_fallback_for_existing_installations() {
+        let temp = tempdir().unwrap();
+        let installed = temp.path().join(".volta/bin/codex");
+        fs::create_dir_all(installed.parent().unwrap()).unwrap();
+        write_executable(&installed);
+        assert_eq!(
+            resolve_codex_program_from_env("", Some(OsStr::new("")), Some(temp.path())),
+            Some(installed)
+        );
+    }
+
+    #[test]
+    fn stale_legacy_override_falls_back_to_the_current_install() {
+        let temp = tempdir().unwrap();
+        let current = temp.path().join("Library/pnpm/bin/codex");
+        fs::create_dir_all(current.parent().unwrap()).unwrap();
+        write_executable(&current);
+
+        assert_eq!(
+            resolve_codex_program_from_env(
+                "~/.removed-manager/bin/codex",
+                Some(OsStr::new("")),
+                Some(temp.path()),
+            ),
+            Some(current)
+        );
+    }
+
+    #[test]
+    fn custom_pnpm_home_supports_both_shim_layouts_without_a_shell_path() {
+        for relative in ["codex", "bin/codex"] {
+            let temp = tempdir().unwrap();
+            let installed = temp.path().join(relative);
+            fs::create_dir_all(installed.parent().unwrap()).unwrap();
+            write_executable(&installed);
+            assert_eq!(
+                resolve_codex_program_from_locations(
+                    "",
+                    Some(OsStr::new("")),
+                    None,
+                    Some(temp.path())
+                ),
+                Some(installed)
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_executable_path_entry_does_not_hide_a_valid_install() {
+        let temp = tempdir().unwrap();
+        let shadow = temp.path().join("codex");
+        fs::write(&shadow, "not executable").unwrap();
+        let current = temp.path().join("Library/pnpm/bin/codex");
+        fs::create_dir_all(current.parent().unwrap()).unwrap();
+        write_executable(&current);
+
+        assert_eq!(
+            resolve_codex_program_from_env("", Some(temp.path().as_os_str()), Some(temp.path())),
+            Some(current)
         );
     }
 

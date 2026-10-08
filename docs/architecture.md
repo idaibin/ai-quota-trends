@@ -14,7 +14,11 @@ AI Quota Trends is a multi-provider quota and Token usage Client/Tauri repositor
 
 The provider catalog is deliberately fixed. Codex owns the persistent quota collector.
 ZCode, Claude CLI, and Antigravity CLI contribute read-only model-level Token activity
-from local usage metadata. Qoder CN and Antigravity expose their account quota through their
+from local usage metadata. ZCode additionally reads its configured BigModel Coding Plan
+account quota from the same official `/api/monitor/usage/quota/limit` endpoint used by the
+installed ZCode desktop client. The API key and base URL are read from ZCode's own provider
+configuration only for that bounded request; credentials are never returned to the frontend,
+logged, or persisted by this app. Qoder CN and Antigravity expose their account quota through their
 installed CLI usage screens; the app reads those screens on demand through a bounded PTY
 and does not read provider credentials, send model prompts, or persist those observations
 as trend snapshots. Antigravity Token collection separately reads only the model, usage,
@@ -46,8 +50,9 @@ continuity. Before the dashboard result is exposed, visible history and today's
 total are rebuilt from Codex and additional provider/model rows; when no model row
 exists, the visible total is zero. The tray does not expose account/usage/read as an
 additional or visible metric. Visible Token totals, heatmap, and tooltip use
-completed-request total Tokens. Cached plus non-cached input remains a separate
-diagnostic breakdown. A separate local runtime scans only
+provider-reported total Tokens. ZCode totals use `computed_total_tokens`, matching ZCode's
+own per-request `totalTokens` and therefore including cache-read input; cached plus
+non-cached input remains a separate diagnostic breakdown. A separate local runtime scans only
 `token_count.last_token_usage` metadata from Codex session and archived-session
 JSONL files for input totals, cache split, calls, and distinct source sessions. Spawned
 subagent rollouts can replay their
@@ -71,9 +76,10 @@ to `input_tokens` rather than to the displayed Token value.
 
 1. Tauri starts one background collector.
 2. The core starts `codex app-server --listen stdio://` using the shared resolver. A non-empty
-   legacy `codexPath` override is used first; empty values use `PATH`, then Volta/local installs
-   and Homebrew locations. Settings exposes only provider status and version; the path remains
-   internal.
+   legacy `codexPath` override is used first when executable. Missing or non-executable overrides
+   fall back to `PATH`, `PNPM_HOME` (both root and bin shim layouts), standard pnpm/local installs,
+   then Homebrew locations. Discovery runs again on reconnect without rewriting stored settings.
+   Settings exposes only provider status and version; the path remains internal.
 3. It sends `initialize`, then `initialized`.
 4. It reads `account/read` and `account/rateLimits/read`.
 5. A rate-limit response is normalized into one `QuotaSnapshot` per `limitId`.
@@ -94,13 +100,17 @@ the existing SQLite/UI domain remains intentionally narrower until the PoC passe
 The Tauri app is the production runtime. Vite development outside Tauri uses a
 clearly labeled deterministic demo adapter so the visual reference pages can be
 reviewed in a browser; it is not a production transport fallback.
+All local Cargo checks, tests, CLI runs, and Tauri builds share `target.noindex`.
+Development and test builds retain limited debug information for useful backtraces
+without keeping full variable-level debug data for the dependency graph.
 
 ## Product boundaries
 
 - Local-first: SQLite in the app data directory.
 - Rust-first: collection, persistence, calculations, and alerts in Rust.
 - Dynamic windows: primary/secondary app-server windows become a vector.
-- No private API access and no credential file reads.
+- No private ChatGPT API access. Provider credentials are not persisted or exposed; ZCode's own
+  configured BigModel key is read only to request its official account quota endpoint.
 - No cloud sync, user system, AI analysis, or cost estimation.
 
 ## Update lifecycle

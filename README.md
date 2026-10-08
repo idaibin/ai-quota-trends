@@ -2,9 +2,10 @@
 
 AI Quota Trends is a local-first quota and Token usage dashboard for AI services
 and coding agents. Codex quota and model-level token activity are collected today;
-ZCode contributes model-level
-token activity from its read-only local SQLite history. The unified heatmap uses
-completed-request total Tokens, while input/cache figures remain diagnostic fields.
+ZCode contributes model-level token activity from its read-only local SQLite
+history. The unified heatmap uses completed-request total Tokens; ZCode follows
+its recorded `computed_total_tokens`, including cache-read input. Input/cache
+figures remain diagnostic fields.
 Qoder CN and Antigravity quota is read on demand from their installed CLI usage
 screens through a bounded local PTY. The app does not read their credentials or send
 model prompts, and these observations are not persisted as trend snapshots. Its intended value is durable history, cross-cycle comparison,

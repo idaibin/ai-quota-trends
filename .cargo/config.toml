@@ -1,0 +1,3 @@
+[build]
+# Keep checks, tests, CLI runs, and Tauri builds in one macOS no-index cache.
+target-dir = "target.noindex"

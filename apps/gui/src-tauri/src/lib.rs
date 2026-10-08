@@ -188,9 +188,6 @@ pub fn run() {
 
     let app = builder
         .setup(|app| {
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-
             let data_dir = app.path().app_data_dir()?;
             migrate_legacy_preferences(&data_dir)?;
             migrate_legacy_app_data(&data_dir)?;
@@ -289,6 +286,14 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("failed to build AI Quota Trends");
+
+    #[cfg(target_os = "macos")]
+    let app = {
+        let mut app = app;
+        // Configure Tao before launch, rather than changing policy from the setup callback.
+        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        app
+    };
 
     app.run(|handle, event| match event {
         RunEvent::WindowEvent { label, event: WindowEvent::CloseRequested { api, .. }, .. }

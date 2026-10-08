@@ -25,9 +25,9 @@ The parameterized material and ownership contract for the popover is maintained 
   borderless Token section. A 1px divider appears only when the quota row stack is
   non-empty and relies on the surrounding 8px stack gap without extra vertical margins;
   the resulting provider-to-Token spacing remains 17px. Codex renders only when its first snapshot window has a finite used
-  percentage; Qoder CN and Antigravity render only when enabled and their available
-  provider response contains at least one finite remaining percentage. ZCode is a
-  Token-only source and never renders an empty quota row. Empty, disabled, loading,
+  percentage; ZCode, Qoder CN, and Antigravity render only when enabled and their available
+  provider response contains at least one finite remaining percentage. ZCode renders its
+  account-level `5小时` and `每周` Credit windows, including used/total points and reset duration. Empty, disabled, loading,
   error, and all-N/A providers are omitted rather than replaced by status copy.
   The native window resizes to the measured stack plus the fixed Token
   section. The initial 338×500 window is only a safe startup size. The calendar uses
@@ -36,6 +36,14 @@ The parameterized material and ownership contract for the popover is maintained 
   All finite quota rows use a two-tier rhythm. Codex and Qoder place the tool name at the left and supporting countdown or quota metadata at the right of one header row, followed by a meter row. Each Antigravity model window places its window label and refresh duration on the first line, then its meter on the second line. Every meter row keeps the 4px progress track and fixed-width percentage on one baseline. Quantifiable finite values use a 4px rounded progress track with a flat neutral track and crisp solid data fill; data marks use no gradient, glow, blur, or inset highlight. Unavailable values are omitted and never use a fabricated fill. Codex, Qoder 国内版, and every weekly window use cerulean (`#0b67e8` light, `#58a9ff` dark); every five-hour window uses orange (`#c9471c` light, `#ffb23f` dark). Matching percentages and labels use the same cadence color, while low-quota warning and danger retain amber/coral semantics. Provider status icons and versions are not
   shown. Provider and pool names use 14px type, supporting quota metadata stays at 10.5px, and all percentages use 14px type (today's Token total uses 22px).
   Codex shows "Codex" plus a compact countdown such as "4小时18分"; omit "后重置", reset-card count/expiry, and used/remaining prose.
+  ZCode and Antigravity must render through the same quota-window row component and therefore
+  share identical label-to-meter spacing, percentage alignment, typography, and row gaps.
+  Every provider group orders known windows as `5小时` first and `每周` second; unknown windows
+  follow without being dropped.
+  ZCode uses the same compact two-line window rhythm as Antigravity: `每周` is cerulean and
+  `5小时` is orange, while each row shows the account's used/total Credit metadata and the
+  reset duration returned by the provider. Percentages continue to mean remaining quota, so
+  ZCode's provider `percentage` (used) is converted to `100 - percentage` before display.
   Qoder shows "Qoder 国内版", with no invented reset time, and aligns the actual "used / total · plan" metadata to the right of the same header row only when present; its track and percent share the following meter row. Omit expiry and labels.
   Antigravity groups finite windows by the actual AGY source family: `AGY · Google` contains the Gemini model windows, while `AGY · Claude` contains the Claude/GPT model windows. Each item contains compact `每周` and `5小时` rows when present. The weekly cerulean and five-hour orange palettes supplement the visible `每周` and `5小时` labels; color is never the only encoding. Purple is reserved for Token activity. Unknown window names remain as visible rows in their model group. Place the compact refresh duration after the window label: durations of at least one day use days and hours (for example `6天23小时`), while shorter durations use hours and minutes. Then place the track on the following line; the fixed right percentage spans both lines and centers vertically against the identity/track pair. Keep 8px between adjacent window rows. Omit "后刷新" and fallback prose. Do not fabricate missing durations.
   CLI reads are bounded, never send a
@@ -68,7 +76,7 @@ The parameterized material and ownership contract for the popover is maintained 
   Only the calendar graphic owns `role="img"`; the current-day total and provider `dl` remain outside
   that role so assistive technology retains their native list semantics. The rolling-window phrase `最近 90 天` is not rendered as visible copy; month labels directly introduce the calendar grid.
 - The heatmap shows exactly the latest 90 contiguous local calendar days, including zero-filled days. Today's Token and heatmap
-  intensity use the unified provider/model completed-request total Tokens; the tooltip does not repeat that daily total. Account totals remain data-only and are not
+  intensity use the unified provider/model completed-request total Tokens; ZCode uses its recorded `computed_total_tokens`, including cache-read input. The tooltip does not repeat that daily total. Account totals remain data-only and are not
   exposed as an additional UI metric.
 - Visible popover copy, labels, tooltips, and accessibility names use Chinese. Every visible Tray glyph uses one system monospace stack (`ui-monospace`, SF Mono, Menlo, compatible CJK fallback, `monospace`); weight and size provide hierarchy while numeric columns retain tabular alignment.
 - The native window and its content clip to an 18px continuous corner radius.
@@ -121,8 +129,8 @@ content insets, 6px dense text spacing, and 16px between Settings groups.
   catalog in one compact column with local version/probe status. Each card uses two
   non-overlapping rows: name/version plus the primary-source label or enable toggle,
   followed by one merged connection/capability sentence. Status icons and executable
-  paths are not shown. Codex is labelled as the persistent quota collector, ZCode and
-  Claude CLI as Token sources, and Qoder CN/Antigravity as local CLI quota sources.
+  paths are not shown. Codex is labelled as the persistent quota collector, ZCode as a
+  local context-quota and Token source, Claude CLI as a Token source, and Qoder CN/Antigravity as local CLI quota sources.
   Theme selection is a normal row in the General group. Compact Chinese-only
   groups cover general behavior and data storage. Data storage shows only the
   retention period and total disk usage;
@@ -211,8 +219,9 @@ Reduced-motion users receive no animated chart/ring entrance.
   or unload it after several minutes; frontend data polling still pauses while the
   document is hidden. Dashboard refreshes are single-flight and run only on initial
   load, visible focus/show, or a bounded 30-second visible fallback.
-- On macOS the app uses accessory activation policy so it behaves as a menu bar
-  utility rather than a permanent Dock app.
+- On macOS the bundle declares `LSUIElement` and configures accessory activation
+  policy before the event loop starts. The app stays out of the Dock and Cmd-Tab
+  switcher, including while Settings is open; its menu bar entry remains available.
 
 ## Token heatmap width amendment — 2026-08-11
 

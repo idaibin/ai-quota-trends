@@ -164,10 +164,7 @@ impl Database {
             self.migrate_legacy_provider_catalog()?;
         }
         if previous_schema_version < 7 {
-            self.connection.execute(
-                "DELETE FROM quota_snapshots WHERE limit_id != 'codex'",
-                [],
-            )?;
+            self.connection.execute("DELETE FROM quota_snapshots WHERE limit_id != 'codex'", [])?;
         }
         self.connection.pragma_update(None, "user_version", 7)?;
         Ok(())

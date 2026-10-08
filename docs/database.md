@@ -55,7 +55,9 @@ source, local day, provider, and model. It preserves the aggregate Token tables
 while allowing the popover heatmap to split a day's completed-request total Tokens by model.
 ZCode model usage is not copied into this database: the app opens
 `~/.zcode/cli/db/db.sqlite` read-only and groups completed `model_usage` rows by
-local day and model. Claude CLI usage is read from `~/.claude/projects/**/*.jsonl`;
+local day and model, using ZCode's `computed_total_tokens` for the visible total.
+The latest completed row also supplies recent-task context usage; the model limit comes
+from `~/.zcode/v2/config.json` when available. Claude CLI usage is read from `~/.claude/projects/**/*.jsonl`;
 only timestamp, session/message identity, model, and usage fields are deserialized,
 duplicate streamed records are collapsed before local-day aggregation, and unreadable
 project subdirectories are skipped without discarding readable projects. Directory
