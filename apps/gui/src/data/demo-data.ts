@@ -196,7 +196,7 @@ export const demoAlerts: AlertRecord[] = [
 
 export const demoSettings: AppSettings = {
   enabledProviderIds: ["codex", "zcode", "claude", "qoder-cn", "antigravity"],
-  pollIntervalSeconds: 900,
+  pollIntervalSeconds: 300,
   trayHistoryHours: 24,
   rapidDrainPercent: 5,
   rapidDrainMinutes: 10,

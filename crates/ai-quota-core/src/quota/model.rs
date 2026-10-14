@@ -91,7 +91,7 @@ impl Default for AppSettings {
             enabled_provider_ids: default_enabled_provider_ids(),
             provider_modes: default_provider_modes(),
             provider_order: default_provider_order(),
-            poll_interval_seconds: 900,
+            poll_interval_seconds: 300,
             tray_history_hours: default_tray_history_hours(),
             rapid_drain_percent: 5.0,
             rapid_drain_minutes: 10,
@@ -159,8 +159,8 @@ impl AppSettings {
     }
 
     pub fn normalize_legacy_poll_interval(mut self) -> Self {
-        if !matches!(self.poll_interval_seconds, 900 | 1_800 | 3_600) {
-            self.poll_interval_seconds = 900;
+        if !matches!(self.poll_interval_seconds, 300 | 600 | 900 | 1_800 | 3_600) {
+            self.poll_interval_seconds = 300;
         }
         self
     }
@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn default_settings_are_valid() {
         let settings = AppSettings::default();
-        assert_eq!(settings.poll_interval_seconds, 900);
+        assert_eq!(settings.poll_interval_seconds, 300);
         assert!(settings.enabled_provider_ids.contains(&ProviderId::Codex));
         assert_eq!(settings.retention_days, 14);
         assert_eq!(settings.tray_history_hours, 24);
@@ -330,9 +330,12 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_legacy_poll_interval_to_fifteen_minutes() {
+    fn normalizes_legacy_poll_interval_to_five_minutes() {
         let settings = AppSettings { poll_interval_seconds: 60, ..AppSettings::default() };
-        assert_eq!(settings.normalize_legacy_poll_interval().poll_interval_seconds, 900);
+        assert_eq!(settings.normalize_legacy_poll_interval().poll_interval_seconds, 300);
+        let kept = AppSettings { poll_interval_seconds: 900, ..AppSettings::default() }
+            .normalize_legacy_poll_interval();
+        assert_eq!(kept.poll_interval_seconds, 900);
     }
 
     #[test]

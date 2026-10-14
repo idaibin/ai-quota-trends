@@ -62,9 +62,10 @@ describe("tray provider quota refresh contract", () => {
     expect(source).not.toContain('win.listen("tray-resumed"');
   });
 
-  it("uses the same tray-surface decision for rendering and quota collection", () => {
+  it("collects provider quotas on every surface while tray rendering stays tray-scoped", () => {
     expect(source).toContain('const isTraySurface = startsAsTray || windowLabel === "tray"');
-    expect(source).toContain("if (!isTraySurface || !settingsReady) return");
+    expect(source).toContain("if (!settingsReady) return;");
+    expect(source).not.toContain("if (!isTraySurface || !settingsReady) return");
     expect(source).toContain("if (isTraySurface)");
   });
 
@@ -77,10 +78,12 @@ describe("tray provider quota refresh contract", () => {
 });
 
 describe("provider quota refresh reconciliation", () => {
-  it("keeps the last successful quota across a transient provider error", () => {
+  it("keeps the last successful quota across a transient provider error, carrying the reason", () => {
     const previous = providerQuota("available");
 
-    expect(reconcileProviderQuotaRefresh([previous], [providerQuota("error")])).toEqual([previous]);
+    expect(reconcileProviderQuotaRefresh([previous], [providerQuota("error")])).toEqual([
+      { ...previous, message: "temporary probe failure" },
+    ]);
   });
 
   it("accepts a new successful value and an explicit unavailable result", () => {

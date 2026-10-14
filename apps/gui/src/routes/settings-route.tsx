@@ -141,6 +141,8 @@ export function SettingsRoute({
             value={draft.pollIntervalSeconds}
             onChange={(event) => update("pollIntervalSeconds", Number(event.target.value))}
           >
+            <option value="300">5 分钟</option>
+            <option value="600">10 分钟</option>
             <option value="900">15 分钟</option>
             <option value="1800">30 分钟</option>
             <option value="3600">60 分钟</option>

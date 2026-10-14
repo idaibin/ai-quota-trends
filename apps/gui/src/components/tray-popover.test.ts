@@ -7,6 +7,7 @@ import {
   TrayPopover,
   TRAY_INITIAL_HEIGHT,
   calculateTrayHeight,
+  formatCollectorUpdatedLabel,
   formatQuotaPoolName,
   formatQuotaPercent,
   formatRefreshDuration,
@@ -531,6 +532,69 @@ describe("tray quota overview", () => {
     );
     expect(markup).toContain('aria-label="AGY · Claude 未知窗口 额度"');
     expect(markup).toContain(">0%<");
+  });
+
+  it("marks provider quotas as stale once their last fetch is too old", () => {
+    const nowSeconds = Math.floor(Date.now() / 1_000);
+    const zcodeQuota = (fetchedAtEpoch?: number) => ({
+      id: "zcode" as const,
+      displayName: "ZCode",
+      status: "available" as const,
+      fetchedAtEpoch,
+      plan: null,
+      expiresAtRaw: null,
+      expiresAtEpoch: null,
+      pools: [
+        {
+          name: "每周",
+          models: [],
+          used: 6451,
+          total: 140000,
+          remainingPercent: 96,
+          refreshAfterSeconds: 3600,
+          refreshRaw: null,
+        },
+      ],
+      message: null,
+    });
+
+    const staleMarkup = renderToStaticMarkup(
+      createElement(TrayPopover, {
+        data: demoDashboard,
+        settings: demoSettings,
+        providers: [],
+        providerQuotas: [{ ...zcodeQuota(nowSeconds - 20 * 60), message: "本地 CLI 版本探测失败" }],
+      }),
+    );
+    expect(staleMarkup).toContain("数据过期");
+    expect(staleMarkup).toContain("最近一次拉取失败");
+
+    const freshMarkup = renderToStaticMarkup(
+      createElement(TrayPopover, {
+        data: demoDashboard,
+        settings: demoSettings,
+        providers: [],
+        providerQuotas: [zcodeQuota(nowSeconds - 60)],
+      }),
+    );
+    expect(freshMarkup).not.toContain("数据过期");
+
+    const legacyMarkup = renderToStaticMarkup(
+      createElement(TrayPopover, {
+        data: demoDashboard,
+        settings: demoSettings,
+        providers: [],
+        providerQuotas: [zcodeQuota()],
+      }),
+    );
+    expect(legacyMarkup).not.toContain("数据过期");
+  });
+
+  it("labels the Codex row with the collector's last update time", () => {
+    expect(formatCollectorUpdatedLabel(600, 3_600)).toBe("50分前更新");
+    expect(formatCollectorUpdatedLabel(0, 90_000)).toBe("1天1小时前更新");
+    expect(formatCollectorUpdatedLabel(null, 0)).toBeNull();
+    expect(formatCollectorUpdatedLabel(Number.NaN, 0)).toBeNull();
   });
 
   it("hides stale local quotas while loading, in error, or without finite pools", () => {

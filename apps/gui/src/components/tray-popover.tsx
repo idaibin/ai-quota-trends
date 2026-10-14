@@ -10,6 +10,7 @@ import type {
   QuotaWindow,
 } from "../types";
 import { isTauriRuntime } from "../api/quota-api";
+import { isStaleProviderQuota, quotaFetchedAgoSeconds } from "../utils/provider-quotas";
 import { TokenActivityCard } from "./token-activity-card";
 
 const providerFallbacks: ProviderProbe[] = [
@@ -284,6 +285,31 @@ export const groupAntigravityQuotaPools = (pools: ProviderQuota["pools"] = []) =
 };
 
 const boundedPercent = (value: number) => Math.max(0, Math.min(100, value));
+
+const StaleQuotaBadge = ({ quota, now }: { quota: ProviderQuota; now: number }) => {
+  if (!isStaleProviderQuota(quota, now)) return null;
+  const fetchedAgo = quotaFetchedAgoSeconds(quota, now);
+  const updatedLabel =
+    fetchedAgo != null ? `${formatCompactDuration(Math.floor(fetchedAgo / 60))}前更新` : "数据过期";
+  return (
+    <span
+      className="tray-quota-meta tray-quota-meta--stale"
+      title={quota.message ? `${updatedLabel} · 最近一次拉取失败：${quota.message}` : updatedLabel}
+    >
+      数据过期
+    </span>
+  );
+};
+
+export const formatCollectorUpdatedLabel = (
+  lastUpdateAt: number | null,
+  now: number,
+): string | null => {
+  if (typeof lastUpdateAt !== "number" || !Number.isFinite(lastUpdateAt)) return null;
+  const agoMinutes = Math.floor(Math.max(0, now - lastUpdateAt) / 60);
+  return `${formatCompactDuration(agoMinutes)}前更新`;
+};
+
 export const hasFiniteRemaining = (pool: ProviderQuota["pools"][number]) =>
   pool != null && pool.remainingPercent != null && Number.isFinite(pool.remainingPercent);
 
@@ -483,6 +509,10 @@ export function TrayPopover({
                   const displayedRemainingPercent = Math.round(remainingPercent);
                   const resetCountdown = formatResetCountdown(quotaWindow?.resetAt ?? null, now);
                   const statusClass = quotaStatusClass(displayedRemainingPercent);
+                  const updatedLabel = formatCollectorUpdatedLabel(
+                    data.collector?.lastUpdateAt ?? null,
+                    now,
+                  );
                   return [
                     <div
                       key={provider.id}
@@ -499,6 +529,11 @@ export function TrayPopover({
                               aria-label={`${resetCountdown}后重置`}
                             >
                               {resetCountdown}
+                            </span>
+                          ) : null}
+                          {updatedLabel ? (
+                            <span className="tray-quota-meta" title="后台采集器上次写入快照的时间">
+                              {updatedLabel}
                             </span>
                           ) : null}
                         </div>
@@ -537,6 +572,7 @@ export function TrayPopover({
                     >
                       <div className="tray-quota-group-header">
                         <strong>ZCode</strong>
+                        <StaleQuotaBadge quota={providerQuota} now={now} />
                       </div>
                       <div className="tray-quota-window-list">
                         {pools.map((pool) => {
@@ -583,6 +619,7 @@ export function TrayPopover({
                           <strong title={(group.models ?? []).join("、") || group.rawGroupName}>
                             {group.label}
                           </strong>
+                          <StaleQuotaBadge quota={providerQuota} now={now} />
                         </div>
                         <div className="tray-quota-window-list">
                           {group.pools.map(({ index, pool, windowKind, windowLabel }) => {
@@ -632,6 +669,7 @@ export function TrayPopover({
                       <div className="tray-quota-header">
                         <div className="tray-quota-identity">
                           <strong>{provider.displayName}</strong>
+                          <StaleQuotaBadge quota={providerQuota} now={now} />
                           {qoderMeta && <span className="tray-quota-meta">{qoderMeta}</span>}
                         </div>
                       </div>

@@ -1998,3 +1998,89 @@ final result: passed
 - Current native visual evidence remains `Not verified`: Computer Use timed out when
   targeting both the installed app path and the `Agent Quota Trends` app name. No stale
   screenshot or browser rendering was substituted for the installed Tauri window.
+
+## Provider quota freshness and 5-minute collection — 2026-10-14
+
+- Root cause fixed for the ZCode tray card frozen at the 2026-09-20 snapshot:
+  login-launched instances inherit launchd's minimal PATH, so the
+  `#!/usr/bin/env node` zcode probe exited 127 before any quota HTTP request
+  (`env: node: No such file or directory`; 6.5-minute lsof sampling of the
+  running instance showed zero outbound connections). Provider spawns now
+  prepend `~/Library/pnpm/bin`, `~/.volta/bin`, `~/.local/bin`,
+  `/opt/homebrew/bin`, and `/usr/local/bin` via `augmented_path`.
+- `ProviderQuota` now carries `fetchedAtEpoch`. The tray and the new overview
+  "Provider Quotas" panel mark entries older than 15 minutes as 数据过期 and
+  tooltip the last fetch error carried by `reconcileProviderQuotaRefresh`; the
+  Codex row labels the collector's last snapshot age; provider quota reads run
+  on parallel scoped threads; the main window fetches provider quotas on the
+  same 5-minute cycle as the tray.
+- Poll cadence: default and invalid-value fallback are now 300 seconds; the
+  settings picker offers 5/10/15/30/60 minutes. The live settings row was
+  migrated 900 → 300.
+- Source baseline passes `cargo fmt --all -- --check`, frontend formatting,
+  `just check`, and `just test` (94 core+Tauri tests, 83 frontend tests).
+- The rebuilt debug bundle was installed at
+  `/Applications/AI Quota Trends.app`. The raw `--bundles app` output ships
+  without `_CodeSignature`, so `codesign --force --deep --sign -` runs before
+  `codesign --verify --strict`. The replaced bundle remains recoverable at
+  `/private/tmp/AI Quota Trends.app.backup-20261014-105708`.
+- Runtime evidence: one refresh cycle after relaunch the tray cache held a
+  fresh ZCode quota (fetchedAtEpoch 14 seconds old, 5h 6309/28000, weekly
+  19632/140000, message cleared) versus the frozen 2026-09-20 snapshot before
+  the fix, reconfirmed after the second install (6649/28000, 19972/140000).
+  Collector events show fresh `connected` records and the DB row reads
+  pollIntervalSeconds 300. Native popover visual capture stays
+  `Not verified`: no menu-bar interaction was performed while the user was
+  present, and no stale or browser screenshot was substituted.
+
+## Installed collector cadence and opened tray verification — 2026-10-14
+
+- Target: `/Applications/AI Quota Trends.app`, version `0.1.1`, Bundle ID
+  `dev.idaibin.ai-quota-trends`, executable PID `56761`. The installed bundle
+  passes `codesign --verify --deep --strict`; executable SHA-256 is
+  `e6d64f571bad110805454914bd7af92e6dd7d927a64d47b3a1f5d8755246a5a5`.
+- Runtime ownership: PID `56761` owns Node launcher PID `56793`, which owns
+  Codex app-server PID `56801`. Its actual request logs in
+  `~/.codex/logs_2.sqlite` are attributed to
+  `pid:56801:575bf4c1-a35b-47c7-956e-c5f9930583a1`; other Codex instances were
+  excluded. The live app settings still read `pollIntervalSeconds: 300`.
+- Direct cadence evidence: 15 consecutive `account/rateLimits/read` requests
+  from `14:00:39.218903` through `15:10:39.264301` (Asia/Shanghai), request IDs
+  `73, 75, …, 101`. The 14 intervals range from `299.992197` to `300.021804`
+  seconds, averaging `300.003243` seconds. Every rate-limit request is followed
+  by `account/usage/read`, consistent with the collector advancing past its
+  rate-limit response. This verifies the installed collector's 300-second
+  request cadence independently of change-only snapshot persistence.
+- Retained evidence: `artifacts/native-qa-20261014/collector-cadence.csv`,
+  SHA-256 `2bc6c34afe07a00d639ad01206a688e15ff8f7786bf21afe7af1f0b959186d44`.
+  The paired 30 rate-limit/usage requests are retained in
+  `artifacts/native-qa-20261014/collector-requests.csv`, SHA-256
+  `8b87e9067f26a53d291e2a0f42ccde512c7e34bf65d3d926af866bfcbe0c4276`.
+- Boundary: model-catalog refresh timeout errors also occur in this app-server's
+  logs; the quota request cadence continues through them. This check does not
+  claim that every unrelated app-server operation succeeds.
+- Native visual acceptance: the user opened the quota popover manually after
+  Computer Use bindings timed out and an explicitly authorized AXPress did not
+  trigger the app's left-button-release handler. The native menu exposed by
+  AXPress was closed successfully with AXCancel. The earlier hidden-window capture
+  was excluded from acceptance because it showed cached content.
+- The final CoreGraphics observation confirms PID `56761`, `CGWindowID 35855`,
+  `kCGWindowIsOnscreen: 1`, layer 5, 338×610 points at `(1897, 30)`. The actual
+  676×1220-pixel window capture was taken at `15:22:09 +0800` and is retained as
+  `artifacts/native-qa-20261014/tray-open.png`, SHA-256
+  `a24d0ab3fb7971987b7af63375f90c47fcdf61479d877f06c93e153b352ef573`.
+  It was inspected directly: the dark rounded tray is populated without a blank
+  frame or clipped content; Codex shows `72%` and `0分钟前更新`; ZCode shows
+  `6,059 / 2.8万`, `79%` for its orange five-hour row and `3.62万 / 14万`, `75%`
+  for its blue weekly row. Both AGY families, aligned quota meters/percentages,
+  Token totals and the seven-row calendar are visible. Opening refreshed the
+  previously cached Codex age and ZCode values. Corner pixels `(0,0)` and `(20,0)`
+  have zero alpha; the top-center edge alpha is `0.882353`.
+- Visual boundary: this verifies the current populated dark tray and its update
+  label. Forced expired/error tooltips, other themes, sleep/wake and repeated-open
+  latency scenarios were not exercised in this acceptance. No browser was opened
+  and no Dimensions configuration was changed. No source, settings, installation,
+  or collector restart was required.
+
+final result: installed 300-second collection verified from actual app-server
+request logs; current opened native tray visual verified

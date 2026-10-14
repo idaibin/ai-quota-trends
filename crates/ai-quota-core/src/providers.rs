@@ -67,6 +67,9 @@ pub struct ProviderQuota {
     pub id: ProviderId,
     pub display_name: String,
     pub status: ProviderQuotaStatus,
+    /// When this quota was read, so the UI can flag entries kept from an
+    /// earlier refresh instead of presenting them as current.
+    pub fetched_at_epoch: i64,
     pub plan: Option<String>,
     pub expires_at_raw: Option<String>,
     pub expires_at_epoch: Option<i64>,
@@ -228,17 +231,32 @@ fn provider_capability(
 /// Read the local quota screens for the providers that expose a supported
 /// interactive command. The command is run in an isolated tmux session so Qoder
 /// and Antigravity receive a real terminal, while the reader stays bounded and
-/// never sends a model prompt.
+/// never sends a model prompt. Each provider is read on its own thread so one
+/// slow CLI screen cannot delay the others.
 pub fn read_provider_quotas(probes: &[ProviderProbe]) -> Vec<ProviderQuota> {
-    probes
-        .iter()
-        .filter_map(|probe| match probe.id {
+    fn read_one(probe: &ProviderProbe) -> Option<ProviderQuota> {
+        match probe.id {
             ProviderId::Zcode => Some(read_zcode_quota(probe)),
             ProviderId::QoderCn => Some(read_qoder_quota(probe)),
             ProviderId::Antigravity => Some(read_antigravity_quota(probe)),
             ProviderId::Codex | ProviderId::Claude => None,
-        })
-        .collect()
+        }
+    }
+
+    thread::scope(|scope| {
+        let handles =
+            probes.iter().map(|probe| scope.spawn(|| read_one(probe))).collect::<Vec<_>>();
+        handles
+            .into_iter()
+            .filter_map(|handle| match handle.join() {
+                Ok(quota) => quota,
+                Err(panic) => {
+                    warn!("provider quota reader panicked: {panic:?}");
+                    None
+                }
+            })
+            .collect()
+    })
 }
 
 fn read_zcode_quota(probe: &ProviderProbe) -> ProviderQuota {
@@ -365,6 +383,7 @@ fn parse_zcode_quota_response(response: &str, now_epoch_seconds: u64) -> Result<
         id: ProviderId::Zcode,
         display_name: "ZCode".to_owned(),
         status: ProviderQuotaStatus::Available,
+        fetched_at_epoch: current_epoch_seconds(),
         plan: envelope.data.level,
         expires_at_raw: None,
         expires_at_epoch: None,
@@ -413,11 +432,16 @@ fn read_antigravity_quota(probe: &ProviderProbe) -> ProviderQuota {
     }
 }
 
+fn current_epoch_seconds() -> i64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+}
+
 fn unavailable_quota(id: ProviderId, display_name: &str, message: &str) -> ProviderQuota {
     ProviderQuota {
         id,
         display_name: display_name.to_owned(),
         status: ProviderQuotaStatus::Unavailable,
+        fetched_at_epoch: current_epoch_seconds(),
         plan: None,
         expires_at_raw: None,
         expires_at_epoch: None,
@@ -431,6 +455,7 @@ fn error_quota(id: ProviderId, display_name: &str, message: impl Into<String>) -
         id,
         display_name: display_name.to_owned(),
         status: ProviderQuotaStatus::Error,
+        fetched_at_epoch: current_epoch_seconds(),
         plan: None,
         expires_at_raw: None,
         expires_at_epoch: None,
@@ -467,7 +492,7 @@ fn run_usage_screen(cli_path: &Path, cwd: Option<&Path>, slash_command: &str) ->
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
     let session = format!("aqt-quota-{}-{nonce}", std::process::id());
     let working_directory = cwd.unwrap_or_else(|| Path::new("."));
-    let status = Command::new(&tmux)
+    let status = spawn_provider_command(&tmux)
         .args(["new-session", "-d", "-s", &session, "-x", "160", "-y", "60", "-c"])
         .arg(working_directory)
         .arg(cli_path)
@@ -589,6 +614,7 @@ fn parse_qoder_quota(output: &str) -> ProviderQuota {
             } else {
                 ProviderQuotaStatus::Unavailable
             },
+            fetched_at_epoch: current_epoch_seconds(),
             plan,
             expires_at_raw,
             expires_at_epoch,
@@ -658,6 +684,7 @@ fn parse_antigravity_quota(output: &str) -> ProviderQuota {
             id: ProviderId::Antigravity,
             display_name: "Antigravity".to_owned(),
             status: ProviderQuotaStatus::Available,
+            fetched_at_epoch: current_epoch_seconds(),
             plan: None,
             expires_at_raw: None,
             expires_at_epoch: None,
@@ -1526,11 +1553,53 @@ fn is_executable(path: &Path) -> bool {
     path.is_file()
 }
 
+/// Node-based CLIs such as `zcode` launch through a `#!/usr/bin/env node`
+/// shebang, so they only run when a `node` binary is reachable via `PATH`.
+/// Login-launched GUI instances inherit launchd's minimal PATH and cannot see
+/// pnpm/volta/homebrew installs, so provider spawns prepend the common node
+/// locations to the inherited PATH.
+fn augmented_path(home: Option<&Path>, current_path: Option<&str>) -> String {
+    let mut entries: Vec<String> = Vec::new();
+    let mut push = |value: String| {
+        if !value.is_empty() && !entries.contains(&value) {
+            entries.push(value);
+        }
+    };
+    if let Some(home) = home {
+        for candidate in ["Library/pnpm/bin", ".volta/bin", ".local/bin"] {
+            push(home.join(candidate).to_string_lossy().into_owned());
+        }
+    }
+    for candidate in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        push(candidate.to_owned());
+    }
+    if let Some(current) = current_path {
+        for entry in current.split(':') {
+            push(entry.to_owned());
+        }
+    }
+    entries.join(":")
+}
+
+/// Starts a provider CLI with [`augmented_path`] so node-script CLIs resolve
+/// their interpreter even under a minimal launchd environment.
+fn spawn_provider_command(program: &Path) -> Command {
+    let mut command = Command::new(program);
+    command.env(
+        "PATH",
+        augmented_path(
+            env::var_os("HOME").as_deref().map(Path::new),
+            env::var("PATH").ok().as_deref(),
+        ),
+    );
+    command
+}
+
 const VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const VERSION_PROBE_POLL: Duration = Duration::from_millis(10);
 
 fn read_version(path: &Path, args: &[&str]) -> Option<String> {
-    let mut child = Command::new(path)
+    let mut child = spawn_provider_command(path)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -1778,6 +1847,40 @@ mod tests {
         ] {
             assert!(zcode_quota_endpoint(base).is_err(), "accepted {base}");
         }
+    }
+
+    #[test]
+    fn zcode_quota_records_when_it_was_fetched() {
+        let quota = parse_zcode_quota_response(
+            r#"{"data":{"limits":[{"type":"CREDIT_LIMIT","unit":3,"number":5,"usage":28000,"currentValue":0,"percentage":0,"nextResetTime":null}],"level":"max"}}"#,
+            0,
+        )
+        .unwrap();
+        assert!(quota.fetched_at_epoch > 0);
+    }
+
+    #[test]
+    fn augmented_path_prepends_node_candidates_and_keeps_inherited_entries() {
+        let path = super::augmented_path(
+            Some(std::path::Path::new("/Users/tester")),
+            Some("/usr/bin:/bin:/usr/bin"),
+        );
+        assert_eq!(
+            path,
+            concat!(
+                "/Users/tester/Library/pnpm/bin:",
+                "/Users/tester/.volta/bin:",
+                "/Users/tester/.local/bin:",
+                "/opt/homebrew/bin:",
+                "/usr/local/bin:",
+                "/usr/bin:/bin"
+            )
+        );
+    }
+
+    #[test]
+    fn augmented_path_falls_back_to_system_candidates_without_home() {
+        assert_eq!(super::augmented_path(None, None), "/opt/homebrew/bin:/usr/local/bin");
     }
 
     #[test]

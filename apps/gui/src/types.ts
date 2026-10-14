@@ -158,6 +158,8 @@ export interface ProviderQuota {
   id: ProviderId;
   displayName: string;
   status: ProviderQuotaStatus;
+  /** Epoch seconds of the last successful read; absent on legacy cached entries. */
+  fetchedAtEpoch?: number | null;
   plan: string | null;
   expiresAtRaw: string | null;
   expiresAtEpoch: number | null;

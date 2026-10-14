@@ -500,8 +500,84 @@ select {
 .overview-page {
   display: grid;
   height: 100%;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+.overview-main-row {
+  display: grid;
+  min-height: 0;
   grid-template-columns: minmax(220px, 0.34fr) minmax(0, 1fr);
   gap: 12px;
+}
+.provider-quota-panel {
+  min-height: 0;
+  padding: 18px;
+  overflow-y: auto;
+}
+.provider-quota-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px 20px;
+}
+.provider-quota-group {
+  display: grid;
+  gap: 6px;
+}
+.provider-quota-group-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.provider-quota-stale {
+  color: var(--warning);
+  font-size: 12px;
+}
+.provider-quota-window {
+  display: grid;
+  gap: 4px;
+}
+.provider-quota-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.provider-quota-identity > span:first-child {
+  color: inherit;
+}
+.provider-quota-duration,
+.provider-quota-points {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.provider-quota-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.provider-quota-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  overflow: hidden;
+}
+.provider-quota-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+.provider-quota-meter b {
+  min-width: 44px;
+  text-align: right;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.provider-quota-empty {
+  color: var(--muted);
+  font-size: 13px;
 }
 .current-remaining-panel,
 .remaining-trend-panel {
@@ -1640,6 +1716,10 @@ select {
   text-overflow: ellipsis;
 }
 
+.tray-quota-meta--stale {
+  color: var(--tray-status-warning, var(--warning));
+}
+
 .tray-quota-track {
   display: block;
   width: 100%;
@@ -1990,6 +2070,7 @@ select {
     display: none;
   }
   .overview-page,
+  .overview-main-row,
   .trend-bottom-grid,
   .alert-summary-grid {
     grid-template-columns: 1fr;

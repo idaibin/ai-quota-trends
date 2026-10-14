@@ -135,7 +135,7 @@ export function AppContent() {
   }, []);
 
   useEffect(() => {
-    if (!isTraySurface || !settingsReady) return;
+    if (!settingsReady) return;
     const refreshProviderQuotas = async (initial: boolean) => {
       if (initial && !providerQuotasLoadedRef.current) setProviderQuotasLoading(true);
       const request = providerQuotaRequestRef.current ?? listProviderQuotas();
@@ -183,7 +183,7 @@ export function AppContent() {
       if (unlistenTrayShown) unlistenTrayShown();
       window.clearInterval(timer);
     };
-  }, [isTraySurface, settingsReady]);
+  }, [settingsReady]);
 
   useEffect(() => {
     if (localStorage.getItem("cqt:requested-route")) localStorage.removeItem("cqt:requested-route");
@@ -341,7 +341,13 @@ export function AppContent() {
       toolbar={toolbar}
     >
       {error && <div className="error-banner">采集器连接异常，请稍后重试</div>}
-      {route === "overview" && <OverviewRoute data={dashboard} />}
+      {route === "overview" && (
+        <OverviewRoute
+          data={dashboard}
+          providerQuotas={providerQuotas}
+          providerQuotasLoading={providerQuotasLoading}
+        />
+      )}
       {route === "settings" && (
         <SettingsRoute settings={settings} onSettingsChange={handleSettingsChange} />
       )}
