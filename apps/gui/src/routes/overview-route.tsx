@@ -1,5 +1,5 @@
 import type { DashboardData, ProviderQuota } from "../types";
-import { formatPercent, formatRelativeTime, formatWindow } from "../utils/format";
+import { formatPercent, formatWindow } from "../utils/format";
 import { isStaleProviderQuota } from "../utils/provider-quotas";
 import { Panel, SectionTitle } from "../components/ui";
 import { UsageAreaChart } from "../components/trend-chart";
@@ -53,9 +53,9 @@ function providerQuotaGroups(providerQuotas: ProviderQuota[], now: number): Prov
     const pools = (quota.pools ?? []).filter(hasFiniteRemaining);
     if (pools.length === 0) continue;
     const staleTitle = isStaleProviderQuota(quota, now)
-      ? `Updated ${formatRelativeTime(quota.fetchedAtEpoch ?? null, now)}${
-          quota.message ? ` · last fetch failed: ${quota.message}` : ""
-        }`
+      ? quota.message
+        ? `Last fetch failed: ${quota.message}`
+        : "Stale quota"
       : null;
 
     if (quota.id === "zcode") {

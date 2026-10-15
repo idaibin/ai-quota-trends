@@ -4,12 +4,13 @@ use std::{
 };
 
 use ai_quota_core::{Database, SharedCollectorState};
-use tokio::sync::Notify;
+use tokio::sync::{Notify, watch};
 
 pub struct AppState {
     pub database: Arc<Mutex<Database>>,
     pub collector_state: SharedCollectorState,
     pub collector_refresh: Arc<Notify>,
+    pub collector_refresh_completion: watch::Receiver<Option<Result<(), String>>>,
     pub collector_reload: Arc<Notify>,
     pub data_dir: PathBuf,
 }

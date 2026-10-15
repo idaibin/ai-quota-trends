@@ -210,6 +210,7 @@ pub fn run() {
                 database,
                 collector_state: runtime.state(),
                 collector_refresh: runtime.refresh_notifier(),
+                collector_refresh_completion: runtime.refresh_completion(),
                 collector_reload: runtime.reload_notifier(),
                 data_dir,
             };
@@ -217,10 +218,11 @@ pub fn run() {
             tauri::async_runtime::spawn(runtime.run());
             tauri::async_runtime::spawn(token_runtime.run());
 
+            let show_quota = MenuItem::with_id(app, "show-quota", "显示额度", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "设置", true, Some("CmdOrCtrl+,"))?;
             let separator = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&settings, &separator, &quit])?;
+            let menu = Menu::with_items(app, &[&show_quota, &settings, &separator, &quit])?;
             let tray_icon = TrayIconBuilder::with_id("ai-quota-trends-tray")
                 .icon(Image::new(include_bytes!("../icons/tray-template.rgba"), 128, 128))
                 .icon_as_template(true)
@@ -246,6 +248,15 @@ pub fn run() {
                     }
                 })
                 .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show-quota" => {
+                        if let Some(tray) = app.tray_by_id("ai-quota-trends-tray")
+                            && let Ok(Some(rect)) = tray.rect()
+                        {
+                            let position = rect.position.to_physical::<f64>(1.0);
+                            let size = rect.size.to_physical::<f64>(1.0);
+                            show_tray(app, position.x + size.width / 2.0, position.y + size.height);
+                        }
+                    }
                     "settings" => show_main(app, Some("settings")),
                     "quit" => app.exit(0),
                     _ => {}

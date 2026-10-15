@@ -201,6 +201,48 @@ mod tests {
         AppSettings, Database, ProviderId, ProviderProbe, ProviderProbeStatus, TrendPoint,
     };
 
+    #[tokio::test]
+    async fn refresh_waits_for_a_new_completion_even_when_the_quota_is_unchanged() {
+        let refresh = tokio::sync::Notify::new();
+        let (finished, completion) = tokio::sync::watch::channel(Some(Ok(())));
+        finished.send_replace(Some(Ok(())));
+        let mut wait = Box::pin(super::wait_for_collection(
+            &refresh,
+            completion,
+            std::time::Duration::from_secs(1),
+        ));
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(1), &mut wait).await.is_err()
+        );
+        refresh.notified().await;
+        finished.send_replace(Some(Ok(())));
+        assert_eq!(wait.await, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn refresh_reports_failure_and_has_a_bounded_wait() {
+        let refresh = tokio::sync::Notify::new();
+        let (finished, completion) = tokio::sync::watch::channel(None);
+        let fail = async {
+            refresh.notified().await;
+            finished.send_replace(Some(Err("offline".to_owned())));
+        };
+        let (result, ()) = tokio::join!(
+            super::wait_for_collection(
+                &refresh,
+                completion.clone(),
+                std::time::Duration::from_secs(1)
+            ),
+            fail
+        );
+        assert_eq!(result, Err("offline".to_owned()));
+        assert_eq!(
+            super::wait_for_collection(&refresh, completion, std::time::Duration::from_millis(1))
+                .await,
+            Err("quota refresh timed out".to_owned())
+        );
+    }
+
     fn probe(id: ProviderId, quota_collection_supported: bool) -> ProviderProbe {
         ProviderProbe {
             id,
@@ -306,8 +348,27 @@ pub async fn get_dashboard(state: State<'_, AppState>) -> Result<DashboardData, 
 
 #[tauri::command]
 pub async fn refresh_quota(state: State<'_, AppState>) -> Result<DashboardData, String> {
-    state.collector_refresh.notify_one();
+    wait_for_collection(
+        &state.collector_refresh,
+        state.collector_refresh_completion.clone(),
+        std::time::Duration::from_secs(20),
+    )
+    .await?;
     dashboard_from_state(&state).await
+}
+
+async fn wait_for_collection(
+    refresh: &tokio::sync::Notify,
+    mut completion: tokio::sync::watch::Receiver<Option<Result<(), String>>>,
+    timeout: std::time::Duration,
+) -> Result<(), String> {
+    completion.borrow_and_update();
+    refresh.notify_one();
+    tokio::time::timeout(timeout, completion.changed())
+        .await
+        .map_err(|_| "quota refresh timed out".to_owned())?
+        .map_err(|_| "quota collector stopped".to_owned())?;
+    completion.borrow_and_update().clone().ok_or("quota refresh result missing")?
 }
 
 #[tauri::command]

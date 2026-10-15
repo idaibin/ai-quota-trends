@@ -7,7 +7,6 @@ import {
   TrayPopover,
   TRAY_INITIAL_HEIGHT,
   calculateTrayHeight,
-  formatCollectorUpdatedLabel,
   formatQuotaPoolName,
   formatQuotaPercent,
   formatRefreshDuration,
@@ -590,11 +589,18 @@ describe("tray quota overview", () => {
     expect(legacyMarkup).not.toContain("数据过期");
   });
 
-  it("labels the Codex row with the collector's last update time", () => {
-    expect(formatCollectorUpdatedLabel(600, 3_600)).toBe("50分前更新");
-    expect(formatCollectorUpdatedLabel(0, 90_000)).toBe("1天1小时前更新");
-    expect(formatCollectorUpdatedLabel(null, 0)).toBeNull();
-    expect(formatCollectorUpdatedLabel(Number.NaN, 0)).toBeNull();
+  it("renders quota reset countdowns without collection timestamps", () => {
+    const markup = renderToStaticMarkup(
+      createElement(TrayPopover, {
+        data: demoDashboard,
+        settings: demoSettings,
+        providers: [],
+        providerQuotas: [],
+      }),
+    );
+    expect(markup).toContain("后重置");
+    expect(markup).not.toContain("前更新");
+    expect(markup).not.toContain("上次写入快照");
   });
 
   it("hides stale local quotas while loading, in error, or without finite pools", () => {

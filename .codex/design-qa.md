@@ -1,5 +1,42 @@
 # Design QA
 
+## Current refresh delivery — 2026-10-15
+
+- Target: the existing 338px native tray, same theme and provider/Token layout.
+  The supplied recording shows a 60% menu title and a 61% cached popover.
+- Opening/focusing now requests Codex collection and waits for a new completion
+  signal before reading the dashboard. The wait is bounded at 20 seconds and
+  failed refreshes retain the previous dashboard. Visible Codex/provider refresh
+  runs every 30 seconds; hidden provider polling remains five minutes.
+- Fetch/update timestamps were removed from quota headers and stale tooltips.
+  Reset countdowns and stale/failure status remain available.
+- Passed: `just check`, `just test` (81 core, 15 Tauri, 83 frontend tests),
+  Rust/frontend formatting, and `git diff --check`.
+- Local delivery: `just build-gui` completed. The arm64 debug bundle was ad-hoc
+  signed and strictly verified, installed at `/Applications/AI Quota Trends.app`,
+  and restarted. Bundle ID `dev.idaibin.ai-quota-trends`, version `0.1.1`, and
+  signing class match the previous installation. Built/installed executable SHA-256:
+  `9ce2a74dfab5631e8fc58036156c240d8dbd4cab8ac6049dc5f88a1c6cb029af`.
+  Previous app: `/tmp/ai-quota-refresh-review/AI Quota Trends.before-menu.app`.
+- Runtime: installed PID 20468 owns Node PID 20474 and Codex app-server PID
+  20481. Its request logs show a new `account/rateLimits/read` at
+  10:29:00.334408 Asia/Shanghai, the same second as the Accessibility menu
+  action, followed by `account/usage/read` at 10:29:01.459535.
+- Native acceptance: with the user's explicit approval, the native menu now
+  exposes `显示额度` using the existing `show_tray` owner. AXPress on that menu
+  item returned success and opened the real tray at 10:29:00. `CGWindowID 42039`
+  is onscreen at 338×610 points, with the application foreground. Current
+  screenshot `artifacts/native-quota-refresh/open.png` was inspected directly:
+  no update timestamp is displayed, reset countdowns remain, Codex is 59%,
+  ZCode windows are 91%/69%, and both AGY groups are 100%. The AX tree agrees
+  and contains no update-time text. Codex's 59% matches the menu title and the
+  latest persisted 41% used snapshot.
+- Continuous visible 30-second cadence and an observed numeric quota change
+  remain `Not verified`: by 10:29:17 foreground had returned to ChatGPT and
+  the popover was hidden. No focus was reclaimed. The user explicitly ended
+  further observation and retained the verified result. No synthetic quota
+  change, browser preview, or hidden-window capture was used as acceptance.
+
 ## Provider quota retention across transient refresh failures — 2026-08-27
 
 - Reported failure: reopening the tray intermittently collapsed it to the Codex group even though

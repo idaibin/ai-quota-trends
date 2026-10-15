@@ -24,6 +24,7 @@ import { createSingleFlight } from "./utils/single-flight";
 
 type MainRoute = "overview" | "settings";
 export const PROVIDER_QUOTA_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
+export const VISIBLE_PROVIDER_QUOTA_REFRESH_INTERVAL_MS = 30_000;
 export const DASHBOARD_REFRESH_INTERVAL_MS = 30_000;
 
 export function AppContent() {
@@ -73,12 +74,19 @@ export function AppContent() {
     () =>
       dashboardLoadRef.current(async () => {
         try {
-          const [dashboardData, settingsData] = await Promise.all([getDashboard(), getSettings()]);
+          let refreshError: string | null = null;
+          const [dashboardData, settingsData] = await Promise.all([
+            refreshQuota().catch(async (reason) => {
+              refreshError = reason instanceof Error ? reason.message : String(reason);
+              return getDashboard();
+            }),
+            getSettings(),
+          ]);
           setDashboard(dashboardData);
           setSettings(settingsData);
           saveCachedJson(CACHE_KEYS.DASHBOARD, dashboardData);
           saveCachedJson(CACHE_KEYS.SETTINGS, settingsData);
-          setError(null);
+          setError(refreshError);
         } catch (reason) {
           setError(reason instanceof Error ? reason.message : String(reason));
         }
@@ -172,16 +180,19 @@ export function AppContent() {
       });
     }
 
-    const timer = window.setInterval(
-      () => void refreshProviderQuotas(false),
-      PROVIDER_QUOTA_REFRESH_INTERVAL_MS,
-    );
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") void refreshProviderQuotas(false);
+    }, PROVIDER_QUOTA_REFRESH_INTERVAL_MS);
+    const visibleTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshProviderQuotas(false);
+    }, VISIBLE_PROVIDER_QUOTA_REFRESH_INTERVAL_MS);
     return () => {
       window.removeEventListener("focus", handleTrayFocus);
       window.removeEventListener("aqt-tray-shown", handleTrayFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
       if (unlistenTrayShown) unlistenTrayShown();
       window.clearInterval(timer);
+      window.clearInterval(visibleTimer);
     };
   }, [settingsReady]);
 
@@ -264,6 +275,9 @@ export function AppContent() {
       const refreshed = await refreshQuota();
       setDashboard(refreshed);
       saveCachedJson(CACHE_KEYS.DASHBOARD, refreshed);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setRefreshing(false);
     }

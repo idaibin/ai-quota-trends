@@ -10,7 +10,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, watch};
 use tokio::time::{interval, sleep};
 use tracing::{info, warn};
 
@@ -73,6 +73,7 @@ pub struct CollectorRuntime {
     state: SharedCollectorState,
     paused: Arc<AtomicBool>,
     refresh: Arc<Notify>,
+    refresh_completion: watch::Sender<Option<Result<(), String>>>,
     reload: Arc<Notify>,
     config: CollectorConfig,
 }
@@ -84,6 +85,7 @@ impl CollectorRuntime {
             state: Arc::new(RwLock::new(CollectorState::default())),
             paused: Arc::new(AtomicBool::new(false)),
             refresh: Arc::new(Notify::new()),
+            refresh_completion: watch::channel(None).0,
             reload: Arc::new(Notify::new()),
             config,
         }
@@ -97,6 +99,9 @@ impl CollectorRuntime {
     }
     pub fn refresh_notifier(&self) -> Arc<Notify> {
         Arc::clone(&self.refresh)
+    }
+    pub fn refresh_completion(&self) -> watch::Receiver<Option<Result<(), String>>> {
+        self.refresh_completion.subscribe()
     }
     pub fn reload_notifier(&self) -> Arc<Notify> {
         Arc::clone(&self.reload)
@@ -175,6 +180,13 @@ impl CollectorRuntime {
     }
 
     async fn collect_once(&self, client: &mut AppServerClient) -> Result<()> {
+        let result = self.collect_snapshot(client).await;
+        self.refresh_completion
+            .send_replace(Some(result.as_ref().map(|_| ()).map_err(|error| error.to_string())));
+        result
+    }
+
+    async fn collect_snapshot(&self, client: &mut AppServerClient) -> Result<()> {
         let raw = client.read_rate_limits().await.context("account/rateLimits/read failed")?;
         let now = Utc::now().timestamp();
         let snapshots = normalize_rate_limits(raw.clone(), now)?;
@@ -248,6 +260,7 @@ impl CollectorRuntime {
     }
 
     fn record_disconnect(&self, message: &str) {
+        self.refresh_completion.send_replace(Some(Err(message.to_owned())));
         let now = Utc::now().timestamp();
         self.update_state(CollectorStatus::Offline, None, Some(message.to_owned()));
         let _ = self.with_database(|database| {

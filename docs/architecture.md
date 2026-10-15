@@ -88,6 +88,11 @@ to `input_tokens` rather than to the displayed Token value.
 7. `account/rateLimits/updated` is the primary refresh signal. A configurable poll remains the
    liveness fallback for disconnects or missed notifications.
 8. Disconnects are recorded and retried with bounded exponential backoff.
+9. A dashboard refresh requests collection through the existing notifier and waits
+   for its completion signal with a 20-second bound. Success is published after
+   persistence, including unchanged quota results; failures are returned without
+   discarding the last available dashboard. The visible client requests a refresh
+   on opening/focus and every 30 seconds, independently of the background poll.
 
 The current CLI schema was generated from Codex CLI 0.144.1. The wire model is
 kept tolerant of optional account metadata and additional fields. It currently

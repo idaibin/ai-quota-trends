@@ -14,6 +14,9 @@ The parameterized material and ownership contract for the popover is maintained 
 - Menu bar item: a monochrome template version of the existing quota curve with
   no purple tile, followed by the rounded current Codex remaining percentage. The
   popover selection never changes the menu bar source.
+  Its native menu exposes `显示额度`, `设置`, and `退出`. `显示额度` opens
+  the same popover anchored beneath the status item and is accessible through
+  the native menu's AXPress action.
 - Menu bar popover: 338px wide, frameless, translucent, flush with the menu bar, and
   hidden on blur. It follows a restrained Codex-style monochrome system: near-white in light
   appearance and near-black in dark appearance. The desktop softly shows through one frosted
@@ -218,7 +221,12 @@ Reduced-motion users receive no animated chart/ring entrance.
   throttling is disabled for this one hidden tray WebView so WebKit does not suspend
   or unload it after several minutes; frontend data polling still pauses while the
   document is hidden. Dashboard refreshes are single-flight and run only on initial
-  load, visible focus/show, or a bounded 30-second visible fallback.
+  load, visible focus/show, or a bounded 30-second visible fallback. Each refresh
+  requests Codex collection and waits up to 20 seconds for its completion before
+  reading the dashboard. A failed refresh keeps the last available dashboard.
+  Provider quotas refresh on show/focus and every 30 seconds while visible;
+  their hidden background fallback remains five minutes. Quota headers and
+  tooltips show reset countdowns and failure/stale status without fetch timestamps.
 - On macOS the bundle declares `LSUIElement` and configures accessory activation
   policy before the event loop starts. The app stays out of the Dock and Cmd-Tab
   switcher, including while Settings is open; its menu bar entry remains available.
