@@ -84,11 +84,11 @@ fn provider_probe_inputs(database: &Database) -> Result<(String, Vec<ProviderId>
 }
 
 fn dashboard(
-    database: &Arc<Mutex<Database>>,
+    database_handle: &Arc<Mutex<Database>>,
     collector_state: &SharedCollectorState,
 ) -> Result<DashboardData, String> {
     let now = Utc::now().timestamp();
-    let database = database.lock().map_err(|_| "database lock poisoned".to_owned())?;
+    let database = database_handle.lock().map_err(|_| "database lock poisoned".to_owned())?;
     let snapshot = database
         .latest_any_snapshot()
         .map_err(|error| error.to_string())?
@@ -142,6 +142,25 @@ fn dashboard(
     });
     let collector =
         collector_state.read().map_err(|_| "collector state lock poisoned".to_owned())?.clone();
+    drop(database);
+    let token_activity = build_token_activity(database_handle)?;
+    Ok(DashboardData {
+        snapshot,
+        reset_credits_available,
+        reset_credit_expires_at,
+        history,
+        week_history,
+        heatmap,
+        consumed_percent,
+        speeds,
+        pace,
+        collector,
+        token_activity,
+    })
+}
+
+fn build_token_activity(database_handle: &Arc<Mutex<Database>>) -> Result<TokenActivity, String> {
+    let database = database_handle.lock().map_err(|_| "database lock poisoned".to_owned())?;
     let today = Local::now().date_naive();
     let enabled_provider_ids =
         database.load_settings().map_err(|error| error.to_string())?.enabled_provider_ids;
@@ -179,19 +198,15 @@ fn dashboard(
     }
     token_activity
         .rebuild_from_models_with(additional_models, &today.format("%Y-%m-%d").to_string());
-    Ok(DashboardData {
-        snapshot,
-        reset_credits_available,
-        reset_credit_expires_at,
-        history,
-        week_history,
-        heatmap,
-        consumed_percent,
-        speeds,
-        pace,
-        collector,
-        token_activity,
-    })
+    Ok(token_activity)
+}
+
+pub(crate) async fn token_activity_from_database(
+    database: Arc<Mutex<Database>>,
+) -> Result<TokenActivity, String> {
+    tauri::async_runtime::spawn_blocking(move || build_token_activity(&database))
+        .await
+        .map_err(|error| format!("token activity task failed: {error}"))?
 }
 
 #[cfg(test)]

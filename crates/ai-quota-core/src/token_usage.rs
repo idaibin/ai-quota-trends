@@ -12,6 +12,7 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
+use tokio::sync::{Notify, watch};
 use tokio::time::sleep;
 use tracing::{info, warn};
 
@@ -275,6 +276,8 @@ pub struct TokenUsageRuntime {
     database: Arc<Mutex<Database>>,
     scanner: TokenUsageScanner,
     interval: Duration,
+    refresh: Arc<Notify>,
+    completion: watch::Sender<()>,
 }
 
 impl TokenUsageRuntime {
@@ -282,8 +285,18 @@ impl TokenUsageRuntime {
         Ok(Self {
             database,
             scanner: TokenUsageScanner::from_environment()?,
-            interval: Duration::from_secs(60),
+            interval: Duration::from_secs(15),
+            refresh: Arc::new(Notify::new()),
+            completion: watch::channel(()).0,
         })
+    }
+
+    pub fn refresh_notifier(&self) -> Arc<Notify> {
+        Arc::clone(&self.refresh)
+    }
+
+    pub fn completion(&self) -> watch::Receiver<()> {
+        self.completion.subscribe()
     }
 
     pub async fn run(self) {
@@ -295,16 +308,22 @@ impl TokenUsageRuntime {
             })
             .await
             {
-                Ok(Ok(report)) => info!(
-                    discovered = report.discovered_sources,
-                    scanned = report.scanned_sources,
-                    skipped = report.skipped_sources,
-                    "token usage scan finished"
-                ),
+                Ok(Ok(report)) => {
+                    self.completion.send_replace(());
+                    info!(
+                        discovered = report.discovered_sources,
+                        scanned = report.scanned_sources,
+                        skipped = report.skipped_sources,
+                        "token usage scan finished"
+                    );
+                }
                 Ok(Err(error)) => warn!(%error, "token usage scan failed"),
                 Err(error) => warn!(%error, "token usage scan task failed"),
             }
-            sleep(self.interval).await;
+            tokio::select! {
+                _ = sleep(self.interval) => {}
+                _ = self.refresh.notified() => {}
+            }
         }
     }
 }
@@ -436,6 +455,38 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[tokio::test]
+    async fn opening_refresh_wakes_the_scanner_and_notifies_after_persistence() {
+        let home = tempdir().unwrap();
+        let database = Arc::new(Mutex::new(Database::open_in_memory().unwrap()));
+        let runtime = TokenUsageRuntime {
+            database: Arc::clone(&database),
+            scanner: TokenUsageScanner::new(home.path()),
+            interval: Duration::from_secs(3600),
+            refresh: Arc::new(Notify::new()),
+            completion: watch::channel(()).0,
+        };
+        let refresh = runtime.refresh_notifier();
+        let mut completed = runtime.completion();
+        let task = tokio::spawn(runtime.run());
+        tokio::time::timeout(Duration::from_secs(2), completed.changed()).await.unwrap().unwrap();
+        completed.borrow_and_update();
+        let today = Local::now().format("%Y-%m-%d").to_string();
+        assert!(
+            database
+                .lock()
+                .unwrap()
+                .token_activity(&today, &today)
+                .unwrap()
+                .last_scanned_at
+                .is_some()
+        );
+        refresh.notify_one();
+        tokio::time::timeout(Duration::from_secs(2), completed.changed()).await.unwrap().unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+    }
 
     fn model_activity(
         provider_id: &str,

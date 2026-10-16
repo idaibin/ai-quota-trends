@@ -17,10 +17,19 @@ import { TrayPopover } from "./components/tray-popover";
 import { IconButton, SelectControl } from "./components/ui";
 import { OverviewRoute } from "./routes/overview-route";
 import { SettingsRoute } from "./routes/settings-route";
-import type { AppSettings, DashboardData, ProviderProbe, ProviderQuota, ThemeMode } from "./types";
+import type {
+  AppSettings,
+  DashboardData,
+  ProviderProbe,
+  ProviderQuota,
+  QuotaSnapshot,
+  ThemeMode,
+  TokenActivity,
+} from "./types";
 import { CACHE_KEYS, loadCachedJson, saveCachedJson } from "./utils/cache";
 import { reconcileProviderQuotaRefresh } from "./utils/provider-quotas";
 import { createSingleFlight } from "./utils/single-flight";
+import { mergeDashboard, mergeQuotaSnapshot } from "./utils/quota-snapshot";
 
 type MainRoute = "overview" | "settings";
 export const PROVIDER_QUOTA_REFRESH_INTERVAL_MS = 5 * 60 * 1_000;
@@ -67,6 +76,7 @@ export function AppContent() {
   const providerQuotasRef = useRef(providerQuotas);
   const providerQuotaRequestRef = useRef<Promise<ProviderQuota[]> | null>(null);
   const dashboardLoadRef = useRef(createSingleFlight());
+  const latestTokenActivityRef = useRef<TokenActivity | null>(null);
   const settingsReady = settings !== null;
   const isTraySurface = startsAsTray || windowLabel === "tray";
 
@@ -82,9 +92,10 @@ export function AppContent() {
             }),
             getSettings(),
           ]);
-          setDashboard(dashboardData);
+          setDashboard((current) =>
+            mergeDashboard(current, dashboardData, latestTokenActivityRef.current),
+          );
           setSettings(settingsData);
-          saveCachedJson(CACHE_KEYS.DASHBOARD, dashboardData);
           saveCachedJson(CACHE_KEYS.SETTINGS, settingsData);
           setError(refreshError);
         } catch (reason) {
@@ -93,6 +104,71 @@ export function AppContent() {
       }),
     [],
   );
+
+  useEffect(() => {
+    if (dashboard) saveCachedJson(CACHE_KEYS.DASHBOARD, dashboard);
+  }, [dashboard]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWindow()
+      .listen<TokenActivity>("token-activity-updated", (event) => {
+        latestTokenActivityRef.current = event.payload;
+        setDashboard((current) =>
+          current ? { ...current, tokenActivity: event.payload } : current,
+        );
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== CACHE_KEYS.DASHBOARD || !event.newValue) return;
+      try {
+        const incoming = JSON.parse(event.newValue) as DashboardData;
+        if (!incoming.snapshot) return;
+        setDashboard((current) => {
+          if (!current || incoming.snapshot.createdAt > current.snapshot.createdAt) {
+            return mergeDashboard(current, incoming, latestTokenActivityRef.current);
+          }
+          return current;
+        });
+      } catch {
+        /* Ignore invalid cross-window cache data. */
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    if (isTauriRuntime()) {
+      void getCurrentWindow()
+        .listen<QuotaSnapshot>("quota-updated", (event) => {
+          setDashboard((current) => {
+            if (!current) return current;
+            const snapshot = mergeQuotaSnapshot(current.snapshot, event.payload);
+            return snapshot === current.snapshot ? current : { ...current, snapshot };
+          });
+        })
+        .then((stop) => {
+          if (disposed) stop();
+          else unlisten = stop;
+        });
+    }
+    return () => {
+      disposed = true;
+      window.removeEventListener("storage", handleStorage);
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     void load();
@@ -273,8 +349,7 @@ export function AppContent() {
     setRefreshing(true);
     try {
       const refreshed = await refreshQuota();
-      setDashboard(refreshed);
-      saveCachedJson(CACHE_KEYS.DASHBOARD, refreshed);
+      setDashboard((current) => mergeDashboard(current, refreshed, latestTokenActivityRef.current));
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));

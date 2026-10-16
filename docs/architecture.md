@@ -93,6 +93,17 @@ to `input_tokens` rather than to the displayed Token value.
    persistence, including unchanged quota results; failures are returned without
    discarding the last available dashboard. The visible client requests a refresh
    on opening/focus and every 30 seconds, independently of the background poll.
+10. The Tauri shell subscribes to collection completion and publishes the persisted
+    snapshot through `quota-updated` to both WebViews while updating the tray title.
+    Tray opening also publishes that snapshot. React keeps the newest snapshot by
+    collection timestamp when merging dashboard responses and cross-window cache
+    events, so Token aggregation cannot delay a collected quota update.
+11. Token usage scans run serially with a 15-second fallback and a coalesced
+    refresh request when the tray opens. Successful scans notify the Tauri shell,
+    which rebuilds the unified provider/model activity and emits
+    `token-activity-updated` to both WebViews, including hidden windows. This
+    stream updates today's totals and the heatmap independently of Codex quota
+    requests. A later dashboard response cannot overwrite the last streamed activity.
 
 The current CLI schema was generated from Codex CLI 0.144.1. The wire model is
 kept tolerant of optional account metadata and additional fields. It currently

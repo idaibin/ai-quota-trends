@@ -72,7 +72,7 @@ describe("tray provider quota refresh contract", () => {
   it("initializes state from local storage cache to eliminate blank-screen flashing", () => {
     expect(source).toContain("loadCachedJson<DashboardData>(CACHE_KEYS.DASHBOARD)");
     expect(source).toContain("loadCachedJson<AppSettings>(CACHE_KEYS.SETTINGS)");
-    expect(source).toContain("saveCachedJson(CACHE_KEYS.DASHBOARD, dashboardData)");
+    expect(source).toContain("saveCachedJson(CACHE_KEYS.DASHBOARD, dashboard)");
     expect(source).toContain("saveCachedJson(CACHE_KEYS.SETTINGS, settingsData)");
   });
 });

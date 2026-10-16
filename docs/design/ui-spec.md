@@ -227,6 +227,14 @@ Reduced-motion users receive no animated chart/ring entrance.
   Provider quotas refresh on show/focus and every 30 seconds while visible;
   their hidden background fallback remains five minutes. Quota headers and
   tooltips show reset countdowns and failure/stale status without fetch timestamps.
+  Successful background collection publishes the same persisted Codex snapshot to
+  the menu title and both WebViews, including while the tray is hidden. Opening
+  the tray republishes the latest local snapshot. Older dashboard responses cannot
+  overwrite a newer quota snapshot; Token aggregation does not gate quota rendering.
+  Today's Token summary, provider subtotals and heatmap update together from the
+  background Token stream while the tray is hidden or visible. Opening requests
+  a fresh local scan. The serial scanner's fallback wait is 15 seconds; scan
+  duration and provider source availability remain separate from that interval.
 - On macOS the bundle declares `LSUIElement` and configures accessory activation
   policy before the event loop starts. The app stays out of the Dock and Cmd-Tab
   switcher, including while Settings is open; its menu bar entry remains available.

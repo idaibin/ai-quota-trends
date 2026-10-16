@@ -88,6 +88,19 @@ fn current_remaining_title(database: &Arc<Mutex<Database>>) -> String {
     format_remaining_title(used_percent)
 }
 
+fn publish_quota_snapshot(app: &tauri::AppHandle, database: &Arc<Mutex<Database>>) {
+    let snapshot =
+        database.lock().ok().and_then(|database| database.latest_any_snapshot().ok().flatten());
+    if let Some(snapshot) = snapshot {
+        if let Some(tray) = app.tray_by_id("ai-quota-trends-tray") {
+            let title =
+                format_remaining_title(snapshot.windows.first().map(|window| window.used_percent));
+            let _ = tray.set_title(Some(&title));
+        }
+        let _ = app.emit("quota-updated", snapshot);
+    }
+}
+
 fn show_main(app: &tauri::AppHandle, route: Option<&str>) {
     if let Some(window) = app.get_webview_window("main") {
         if let Some(r) = route {
@@ -123,6 +136,8 @@ fn show_tray(app: &tauri::AppHandle, anchor_x: f64, anchor_y: f64) {
     let target_x = (anchor_x - width / 2.0).max(8.0);
     let target_y = anchor_y;
     let _ = window.set_position(PhysicalPosition::new(target_x, target_y));
+    publish_quota_snapshot(app, &app.state::<AppState>().database);
+    app.state::<AppState>().token_refresh.notify_one();
     if let Err(error) = window.show() {
         eprintln!("[AQT] failed to show tray window: {error}");
         return;
@@ -206,24 +221,37 @@ pub fn run() {
             let initial_tray_title = current_remaining_title(&tray_database);
             let runtime = CollectorRuntime::new(Arc::clone(&database), CollectorConfig::default());
             let token_runtime = TokenUsageRuntime::from_environment(Arc::clone(&database))?;
+            let mut token_completion = token_runtime.completion();
+            let token_database = Arc::clone(&database);
             let state = AppState {
                 database,
                 collector_state: runtime.state(),
                 collector_refresh: runtime.refresh_notifier(),
                 collector_refresh_completion: runtime.refresh_completion(),
                 collector_reload: runtime.reload_notifier(),
+                token_refresh: token_runtime.refresh_notifier(),
                 data_dir,
             };
             app.manage(state);
             tauri::async_runtime::spawn(runtime.run());
             tauri::async_runtime::spawn(token_runtime.run());
+            let token_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                while token_completion.changed().await.is_ok() {
+                    token_completion.borrow_and_update();
+                    match commands::token_activity_from_database(Arc::clone(&token_database)).await {
+                        Ok(activity) => { let _ = token_app.emit("token-activity-updated", activity); }
+                        Err(error) => eprintln!("[AQT] token activity refresh failed: {error}"),
+                    }
+                }
+            });
 
             let show_quota = MenuItem::with_id(app, "show-quota", "显示额度", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "设置", true, Some("CmdOrCtrl+,"))?;
             let separator = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_quota, &settings, &separator, &quit])?;
-            let tray_icon = TrayIconBuilder::with_id("ai-quota-trends-tray")
+            let _tray_icon = TrayIconBuilder::with_id("ai-quota-trends-tray")
                 .icon(Image::new(include_bytes!("../icons/tray-template.rgba"), 128, 128))
                 .icon_as_template(true)
                 .title(&initial_tray_title)
@@ -262,15 +290,19 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+            let snapshot_app = app.handle().clone();
+            let mut completion = app.state::<AppState>().collector_refresh_completion.clone();
             tauri::async_runtime::spawn(async move {
-                let mut displayed_title = initial_tray_title;
                 loop {
-                    tokio::time::sleep(TRAY_REFRESH_INTERVAL).await;
-                    let next_title = current_remaining_title(&tray_database);
-                    if next_title != displayed_title {
-                        let _ = tray_icon.set_title(Some(&next_title));
-                        displayed_title = next_title;
+                    tokio::select! {
+                        changed = completion.changed() => {
+                            if changed.is_err() { break; }
+                            let successful = matches!(&*completion.borrow_and_update(), Some(Ok(())));
+                            if !successful { continue; }
+                        }
+                        _ = tokio::time::sleep(TRAY_REFRESH_INTERVAL) => {}
                     }
+                    publish_quota_snapshot(&snapshot_app, &tray_database);
                 }
             });
             Ok(())

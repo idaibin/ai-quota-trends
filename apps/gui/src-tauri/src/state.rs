@@ -12,5 +12,6 @@ pub struct AppState {
     pub collector_refresh: Arc<Notify>,
     pub collector_refresh_completion: watch::Receiver<Option<Result<(), String>>>,
     pub collector_reload: Arc<Notify>,
+    pub token_refresh: Arc<Notify>,
     pub data_dir: PathBuf,
 }
