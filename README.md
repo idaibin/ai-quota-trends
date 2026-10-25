@@ -3,7 +3,8 @@
 AI Quota Trends is a local-first quota and Token usage dashboard for AI services
 and coding agents. Codex quota and model-level token activity are collected today;
 ZCode contributes model-level token activity from its read-only local SQLite
-history. The unified heatmap uses completed-request total Tokens; ZCode follows
+history and reads BigModel account quota using its configured API key (see
+[Privacy](#privacy)). The unified heatmap uses completed-request total Tokens; ZCode follows
 its recorded `computed_total_tokens`, including cache-read input. Input/cache
 figures remain diagnostic fields.
 Qoder CN and Antigravity quota is read on demand from their installed CLI usage
@@ -12,9 +13,9 @@ model prompts, and these observations are not persisted as trend snapshots. Its 
 consumption pace, and honest exhaustion-risk signals rather than another copy
 of a provider's current-usage view.
 
-All product data stays on the Mac. Authentication remains owned by the installed
-Codex CLI through `codex app-server`; the app never reads Codex credentials or
-calls private ChatGPT endpoints.
+Collected history is kept locally on the Mac. Codex authentication remains owned
+by the installed Codex CLI through `codex app-server`; the app never reads Codex
+credentials or calls private ChatGPT endpoints. ZCode quota access is described below.
 
 ## Status: acquisition feasibility gate
 
@@ -101,6 +102,31 @@ download endpoint; it does not build or sign the application.
 ## Privacy
 
 No accounts, cloud sync, analytics, or third-party telemetry are included.
+
+ZCode has two separate data-access paths:
+
+- Token activity opens `~/.zcode/cli/db/db.sqlite` read-only and aggregates
+  completed `model_usage` records by model and local day, including Token totals,
+  input/cache counts, and call/session counts. The query does not select prompt
+  or response content.
+- Account quota reads `~/.zcode/cli/config.json` after a successful ZCode CLI
+  version probe, using `baseURL` and `apiKey` from `provider.bigmodel.options`.
+  With both values present and nonempty, the request sends the configured key as
+  bearer authorization in a GET to
+  `https://open.bigmodel.cn/api/monitor/usage/quota/limit`. It sends no request
+  body, prompts, or local usage history. The configured URL must use HTTPS,
+  `open.bigmodel.cn`, port 443, and no URL username/password; the request replaces
+  its path and removes its query and fragment. The HTTP client has a 10-second
+  timeout and does not follow redirects.
+
+ZCode collection is enabled in default settings. Turn off ZCode's `采集`
+(collection) checkbox in Settings to skip subsequent quota/config and SQLite
+usage reads that use the saved settings. Turning off only `显示` (display) keeps
+collection enabled. CLI discovery and version probing can still run for disabled
+providers; this is not a global no-I/O switch.
+
+See the existing [product specification](docs/ai-quota-trends-spec.md) and
+[architecture](docs/architecture.md) for the provider boundaries.
 
 ## License
 
