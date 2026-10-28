@@ -127,6 +127,7 @@ export interface AppSettings {
   dailySummary: boolean;
   retentionDays: number;
   theme: ThemeMode;
+  tokenHeatmapColor?: string | null;
 }
 
 export type ProviderId = "codex" | "zcode" | "claude" | "qoder-cn" | "antigravity";

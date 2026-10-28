@@ -2104,3 +2104,59 @@ select {
     transition-duration: 0.01ms !important;
   }
 }
+
+.token-color-setting {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.token-color-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.token-color-actions input {
+  width: 42px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+.token-color-actions button {
+  color: var(--accent);
+  cursor: pointer;
+}
+.token-color-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.token-color-previews {
+  display: flex;
+  gap: 8px;
+}
+.token-color-preview {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+.token-color-preview--light {
+  background: #f1eff3;
+  color: #333;
+}
+.token-color-preview--dark {
+  background: #25232b;
+  color: #eee;
+}
+.token-color-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.token-color-error {
+  color: var(--danger);
+  font-size: 12px;
+}

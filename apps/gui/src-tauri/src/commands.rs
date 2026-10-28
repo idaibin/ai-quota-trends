@@ -13,7 +13,7 @@ use ai_quota_core::{
 };
 use chrono::{Duration, Local, Utc};
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::state::AppState;
@@ -476,6 +476,7 @@ pub fn save_settings(
         if settings.launch_at_login { autolaunch.enable() } else { autolaunch.disable() }
             .map_err(|error| error.to_string())?;
     }
+    let _ = app.emit("settings-updated", &settings);
     Ok(settings)
 }
 

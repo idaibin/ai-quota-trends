@@ -1,3 +1,30 @@
+## Token color update follow-up — 2026-10-28
+
+- User reported that the installed version updates the tray color quickly with no noticeable delay after the blue setting was applied. This is user-reported runtime evidence; no exact latency was measured.
+- Subsequent native settings readback displayed purple and the local settings database showed dark theme and the default color. The user or app had already restored it before this readback.
+
+## Token color cross-window update — 2026-10-28
+
+- Settings saves now broadcast the persisted settings to app windows so the tray does not wait for quota refresh. Installed executable SHA-256: 694f80b3aaf4f263caa5fb1c8b92a34b8dadb29f78d84b61e725a5850230dbac; signature verified. Prior app retained at /private/tmp/aqt-color-sync.5q6Xib/previous.app.
+- just build-gui and just test passed; just check ran with the isolated Cargo cache. Installed process started. Native timing and cross-window behavior remain Not verified: app window binding timed out after restart; user was asked to expose settings for runtime acceptance.
+
+## Token heatmap tray evidence — 2026-10-28
+
+- User-provided screenshots show the actual dark tray with default purple and custom blue: the daily Token values and heatmap cells change color, with distinct activity levels visible in both. The screenshots were supplied from the installed app; live tooltip and the light-theme tray remain Not verified.
+- Restored default color in the settings UI and confirmed local stored theme is dark and tokenHeatmapColor is null (default). The pre-check screen was dark with the default displayed purple.
+
+## Token color settings native acceptance — 2026-10-28
+
+- Installed app PID 20371, settings CGWindowID 81502, 520 × 580 points. In the native settings window selected a blue color; light and dark preview scales visibly changed, Apply became enabled, and after Apply it became disabled. Changing the theme to light preserved the blue selection; the light window and both previews were visually inspected. Restore default returned the purple color; restoring dark theme was confirmed via UI and SQLite readback. A temporary blue selection was then applied for tray heatmap verification.
+- Native tray heatmap and tooltip in both themes remain Not verified: the settings window is accessible, but opening the menu bar tray requires the user to expose it to the desktop adapter. Blue is temporarily selected for the pending check.
+
+## Token heatmap custom color — 2026-10-28
+
+- Current worktree: just check, just test, and just build-gui passed with an isolated Cargo cache after an incomplete shared dependency blocked the first attempt.
+- Installed application signature verified; built and installed executable SHA-256: 4a18653ffb8019c25792bf8310d5fe78e94c019a47cabe03494889f1d36617a1. Prior app retained at /private/tmp/aqt-install-backup.yR49HE/original.app.
+- Installed process PID 20371 spawned Codex app-server via PID 20402 and 20409. CoreGraphics reported windows 81502 and 81503; this does not establish visible or interactive state.
+- Native visual and interaction acceptance: Not verified. Computer Use timed out binding the app by name and installed path; no window capture or color-setting interaction was obtained. Automated tests and computed color contrast do not replace real-window acceptance.
+
 # Design QA
 
 ## Current Token refresh delivery — 2026-10-16

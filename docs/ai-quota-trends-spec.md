@@ -34,7 +34,7 @@ AI Quota Trends 是一个 macOS 本地优先（Local-first）的多 AI 服务额
 
 菜单栏标题仍固定使用 Codex 额度。弹出窗一次完整展示所有已启用工具，不提供切换器；Codex 展示持久化额度窗口，ZCode 展示账户级 5 小时与周 Credit 窗口，Qoder 国内版展示套餐与 Credit，Antigravity 展示两个共享模型池。ZCode 的接口返回已使用百分比，展示层统一转换为剩余百分比，并保留积分用量与重置时间。弹出窗不展示 Codex 趋势图。
 
-Token 热力图汇总 Codex 与可验证的本地工具记录。ZCode 使用其每个已完成请求记录的 `computed_total_tokens`，与 ZCode 自身的 `totalTokens` 口径一致，包含缓存读取 Token；缓存与非缓存输入仍保留为诊断拆分。每日悬停仅显示日期与 provider subtotal，不重复当天总量，也不展示 model 子行；可见 provider subtotal 与当天总量对账。
+Token 热力图汇总 Codex 与可验证的本地工具记录。ZCode 使用其每个已完成请求记录的 `computed_total_tokens`，与 ZCode 自身的 `totalTokens` 口径一致，包含缓存读取 Token；缓存与非缓存输入仍保留为诊断拆分。设置中可选择 Token 热力图主色，预览深浅主题并应用或恢复默认；保存失败时保留选择并提示重试。颜色保存在本机，保存成功后同步到菜单栏热力图并应用于深浅主题，无需等待额度刷新。每日悬停仅显示日期与 provider subtotal，不重复当天总量，也不展示 model 子行；可见 provider subtotal 与当天总量对账。
 
 核心目标：
 

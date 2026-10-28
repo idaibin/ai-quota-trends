@@ -82,6 +82,8 @@ pub struct AppSettings {
     pub daily_summary: bool,
     pub retention_days: u64,
     pub theme: ThemeMode,
+    #[serde(default)]
+    pub token_heatmap_color: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -102,6 +104,7 @@ impl Default for AppSettings {
             daily_summary: false,
             retention_days: 14,
             theme: ThemeMode::System,
+            token_heatmap_color: None,
         }
     }
 }
@@ -198,6 +201,13 @@ impl AppSettings {
     }
 
     pub fn validate(&self) -> Result<(), &'static str> {
+        if let Some(color) = &self.token_heatmap_color
+            && (color.len() != 7
+                || !color.starts_with('#')
+                || !color[1..].bytes().all(|b| b.is_ascii_hexdigit()))
+        {
+            return Err("token heatmap color must be a six-digit hex color");
+        }
         if !self.is_provider_collecting(ProviderId::Codex) {
             return Err("Codex must remain enabled as the menu bar quota source");
         }
@@ -241,6 +251,21 @@ const fn default_tray_history_hours() -> u64 {
 mod tests {
     use super::AppSettings;
     use crate::providers::ProviderId;
+
+    #[test]
+    fn token_color_accepts_hex_and_defaults_for_existing_settings() {
+        let mut settings = AppSettings::default();
+        assert_eq!(settings.token_heatmap_color, None);
+        settings.token_heatmap_color = Some("#12aBcF".into());
+        assert!(settings.validate().is_ok());
+        let encoded = serde_json::to_string(&settings).unwrap();
+        assert_eq!(
+            serde_json::from_str::<AppSettings>(&encoded).unwrap().token_heatmap_color,
+            settings.token_heatmap_color
+        );
+        settings.token_heatmap_color = Some("#bad".into());
+        assert!(settings.validate().is_err());
+    }
 
     #[test]
     fn default_settings_are_valid() {

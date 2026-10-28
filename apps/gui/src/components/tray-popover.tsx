@@ -679,6 +679,7 @@ export function TrayPopover({
           activity={data.tokenActivity}
           sectionRef={tokenSectionRef}
           appearance={appearance}
+          baseColor={settings.tokenHeatmapColor}
           providerOrder={providerOrder}
           isProviderDisplaying={isProviderDisplaying}
         />

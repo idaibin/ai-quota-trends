@@ -28,6 +28,11 @@ import type {
 import { formatBytes } from "../utils/format";
 import { Panel, SelectControl, Toggle } from "../components/ui";
 import { UpdateControl } from "../components/update-control";
+import {
+  tokenPalette,
+  TOKEN_HEATMAP_COLORS_DARK,
+  TOKEN_HEATMAP_COLORS_LIGHT,
+} from "../components/token-activity-card";
 
 const DEFAULT_PROVIDER_ORDER: ProviderId[] = [
   "codex",
@@ -173,6 +178,7 @@ export function SettingsRoute({
             <option value="dark">深色</option>
           </SelectControl>
         </SettingRow>
+        <TokenColorSetting settings={settings} onSettingsChange={onSettingsChange} />
       </SettingsSection>
       <SettingsSection icon={<Cpu />} title="模型与工具">
         <ProviderCatalog
@@ -213,6 +219,88 @@ export function SettingsRoute({
         已保存
       </div>
     </div>
+  );
+}
+
+export function TokenColorSetting({
+  settings,
+  onSettingsChange,
+}: {
+  settings: AppSettings;
+  onSettingsChange: (settings: AppSettings) => void;
+}) {
+  const [color, setColor] = useState(settings.tokenHeatmapColor ?? "#895cc6");
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!dirty && !saving) setColor(settings.tokenHeatmapColor ?? "#895cc6");
+  }, [settings.tokenHeatmapColor, dirty, saving]);
+
+  const commit = async (value: string | null) => {
+    setSaving(true);
+    setError(false);
+    try {
+      const stored = await saveSettings({ ...settings, tokenHeatmapColor: value });
+      onSettingsChange(stored);
+      setColor(stored.tokenHeatmapColor ?? "#895cc6");
+      setDirty(false);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const chosen = dirty ? color : settings.tokenHeatmapColor;
+  return (
+    <SettingRow title="Token 热力图主色">
+      <div className="token-color-setting">
+        <div className="token-color-actions">
+          <input
+            type="color"
+            aria-label="Token 热力图主色"
+            value={color}
+            disabled={saving}
+            onChange={(event) => {
+              setColor(event.target.value);
+              setDirty(true);
+              setError(false);
+            }}
+          />
+          <button type="button" disabled={!dirty || saving} onClick={() => void commit(color)}>
+            应用
+          </button>
+          <button type="button" disabled={saving} onClick={() => void commit(null)}>
+            恢复默认
+          </button>
+        </div>
+        <div className="token-color-previews" aria-label="热力图颜色预览">
+          {(["light", "dark"] as const).map((theme) => (
+            <div className={`token-color-preview token-color-preview--${theme}`} key={theme}>
+              <span>{theme === "light" ? "浅色" : "深色"}</span>
+              {(chosen
+                ? tokenPalette(chosen, theme)
+                : theme === "light"
+                  ? TOKEN_HEATMAP_COLORS_LIGHT
+                  : TOKEN_HEATMAP_COLORS_DARK
+              ).map((shade, index) => (
+                <span
+                  key={index}
+                  className="token-color-swatch"
+                  style={{ backgroundColor: shade }}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+        {error && (
+          <span className="token-color-error" role="alert">
+            保存失败，请重试。
+          </span>
+        )}
+      </div>
+    </SettingRow>
   );
 }
 

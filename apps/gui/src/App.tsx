@@ -77,6 +77,7 @@ export function AppContent() {
   const providerQuotaRequestRef = useRef<Promise<ProviderQuota[]> | null>(null);
   const dashboardLoadRef = useRef(createSingleFlight());
   const latestTokenActivityRef = useRef<TokenActivity | null>(null);
+  const settingsRevisionRef = useRef(0);
   const settingsReady = settings !== null;
   const isTraySurface = startsAsTray || windowLabel === "tray";
 
@@ -84,6 +85,7 @@ export function AppContent() {
     () =>
       dashboardLoadRef.current(async () => {
         try {
+          const settingsRevision = settingsRevisionRef.current;
           let refreshError: string | null = null;
           const [dashboardData, settingsData] = await Promise.all([
             refreshQuota().catch(async (reason) => {
@@ -95,8 +97,10 @@ export function AppContent() {
           setDashboard((current) =>
             mergeDashboard(current, dashboardData, latestTokenActivityRef.current),
           );
-          setSettings(settingsData);
-          saveCachedJson(CACHE_KEYS.SETTINGS, settingsData);
+          if (settingsRevision === settingsRevisionRef.current) {
+            setSettings(settingsData);
+            saveCachedJson(CACHE_KEYS.SETTINGS, settingsData);
+          }
           setError(refreshError);
         } catch (reason) {
           setError(reason instanceof Error ? reason.message : String(reason));
@@ -108,6 +112,26 @@ export function AppContent() {
   useEffect(() => {
     if (dashboard) saveCachedJson(CACHE_KEYS.DASHBOARD, dashboard);
   }, [dashboard]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWindow()
+      .listen<AppSettings>("settings-updated", (event) => {
+        settingsRevisionRef.current += 1;
+        setSettings(event.payload);
+        saveCachedJson(CACHE_KEYS.SETTINGS, event.payload);
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -361,12 +385,14 @@ export function AppContent() {
   const handleThemeToggle = () => {
     if (!settings) return;
     const next = { ...settings, theme: (resolvedTheme === "dark" ? "light" : "dark") as ThemeMode };
+    settingsRevisionRef.current += 1;
     setSettings(next);
     saveCachedJson(CACHE_KEYS.SETTINGS, next);
     void saveSettings(next);
   };
 
   const handleSettingsChange = (nextSettings: AppSettings) => {
+    settingsRevisionRef.current += 1;
     setSettings(nextSettings);
     saveCachedJson(CACHE_KEYS.SETTINGS, nextSettings);
   };

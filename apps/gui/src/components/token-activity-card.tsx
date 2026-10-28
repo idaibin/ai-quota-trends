@@ -72,6 +72,19 @@ export const TOKEN_HEATMAP_COLORS = TOKEN_HEATMAP_COLORS_DARK;
 const TOKEN_TOOLTIP_COLORS_DARK = ["#9b82c9", "#aa84df", "#bb8ff0", "#cf9cff"] as const;
 const TOKEN_TOOLTIP_COLORS_LIGHT = ["#7440ba", "#6730b2", "#5824a5", "#47178f"] as const;
 
+// Mix in perceptual OKLab so the four intensity steps remain visually ordered.
+export function tokenPalette(base: string, appearance: "light" | "dark"): string[] {
+  const dark = appearance === "dark";
+  const anchor = `color-mix(in oklab, ${base} 65%, ${dark ? "white" : "black"})`;
+  const background = dark ? "#25232b" : "#f1eff3";
+  return [
+    background,
+    ...[25, 48, 72, 100].map(
+      (amount) => `color-mix(in oklab, ${anchor} ${amount}%, ${background})`,
+    ),
+  ];
+}
+
 export interface TokenHeatmapCell extends TokenUsageHistoryDay {
   dayOfWeek: number;
   weekIndex: number;
@@ -120,8 +133,14 @@ export function tokenTooltipColor(
   value: number,
   maximum: number,
   appearance: "light" | "dark" = "dark",
+  baseColor?: string | null,
 ): string {
   const level = tokenHeatLevel(value, maximum);
+  if (baseColor) {
+    const dark = appearance === "dark";
+    const anchor = `color-mix(in oklab, ${baseColor} 20%, ${dark ? "#c6c6c6" : "#555555"})`;
+    return `color-mix(in oklab, ${dark ? "white" : "black"} ${level * 7}%, ${anchor})`;
+  }
   const colors = appearance === "light" ? TOKEN_TOOLTIP_COLORS_LIGHT : TOKEN_TOOLTIP_COLORS_DARK;
   return colors[Math.max(0, level - 1)];
 }
@@ -254,9 +273,11 @@ export const tokenTooltipDetails = (
 export function TokenTooltipContent({
   details,
   appearance = "dark",
+  baseColor,
 }: {
   details: TokenTooltipDetails;
   appearance?: "light" | "dark";
+  baseColor?: string | null;
 }) {
   const maximum = Math.max(0, ...details.providers.map((provider) => provider.tokens));
 
@@ -269,7 +290,12 @@ export function TokenTooltipContent({
             const tokenCount = formatTokenCountParts(provider.tokens);
             const level = tokenHeatLevel(provider.tokens, maximum);
             const style = {
-              "--tray-token-tooltip-value": tokenTooltipColor(provider.tokens, maximum, appearance),
+              "--tray-token-tooltip-value": tokenTooltipColor(
+                provider.tokens,
+                maximum,
+                appearance,
+                baseColor,
+              ),
             } as CSSProperties;
             return (
               <div
@@ -297,10 +323,12 @@ function TokenActivityTooltip({
   children,
   details,
   appearance,
+  baseColor,
 }: {
   children: ReactElement;
   details: TokenTooltipDetails;
   appearance: "light" | "dark";
+  baseColor?: string | null;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const arrowRef = useRef<SVGSVGElement | null>(null);
@@ -331,7 +359,7 @@ function TokenActivityTooltip({
             style={{ ...floatingStyles, ...transitionStyles }}
             {...getFloatingProps()}
           >
-            <TokenTooltipContent details={details} appearance={appearance} />
+            <TokenTooltipContent details={details} appearance={appearance} baseColor={baseColor} />
             <FloatingArrow ref={arrowRef} context={context} className="tray-token-tooltip-arrow" />
           </div>
         </FloatingPortal>
@@ -367,12 +395,14 @@ export function TokenActivityCard({
   activity,
   sectionRef,
   appearance = "dark",
+  baseColor,
   providerOrder = PROVIDER_ORDER,
   isProviderDisplaying,
 }: {
   activity: TokenActivity;
   sectionRef?: Ref<HTMLElement>;
   appearance?: "light" | "dark";
+  baseColor?: string | null;
   providerOrder?: string[];
   isProviderDisplaying?: (providerId: string) => boolean;
 }) {
@@ -395,7 +425,18 @@ export function TokenActivityCard({
     isProviderDisplaying,
   );
   return (
-    <section ref={sectionRef} className="tray-token-section" aria-label="Token 使用统计">
+    <section
+      ref={sectionRef}
+      className="tray-token-section"
+      aria-label="Token 使用统计"
+      style={
+        baseColor
+          ? ({
+              "--tray-token-accent": tokenTooltipColor(1, 1, appearance, baseColor),
+            } as CSSProperties)
+          : undefined
+      }
+    >
       <div className="tray-token-heatmap">
         <div className="tray-token-provider-summary">
           <dl className="tray-token-metrics">
@@ -434,8 +475,8 @@ export function TokenActivityCard({
             showTotalCount={false}
             showWeekdayLabels={false}
             theme={{
-              dark: [...TOKEN_HEATMAP_COLORS_DARK],
-              light: [...TOKEN_HEATMAP_COLORS_LIGHT],
+              dark: baseColor ? tokenPalette(baseColor, "dark") : [...TOKEN_HEATMAP_COLORS_DARK],
+              light: baseColor ? tokenPalette(baseColor, "light") : [...TOKEN_HEATMAP_COLORS_LIGHT],
             }}
             renderBlock={(block, activityDay) => {
               const cell = cellsByDay.get(activityDay.date);
@@ -443,6 +484,7 @@ export function TokenActivityCard({
                 <TokenActivityTooltip
                   details={tokenTooltipDetails(cell, activity?.models ?? [], providerOrder)}
                   appearance={appearance}
+                  baseColor={baseColor}
                 >
                   {block}
                 </TokenActivityTooltip>
